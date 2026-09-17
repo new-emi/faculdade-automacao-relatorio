@@ -1,0 +1,11 @@
+# Modelos Kokoro (~337 MB, acima do limite de 100 MB por arquivo do GitHub).
+# Reconstruir com: python scripts/download_kokoro.py
+models/
+
+# Artefato do Windows (redirecionamento para "nul").
+nul
+
+__pycache__/
+*.py[cod]
+.venv/
+venv/
