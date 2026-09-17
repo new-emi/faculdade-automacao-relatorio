@@ -82,6 +82,7 @@ O uso de assistentes de IA é declarado de forma transparente: as decisões, a v
 | R6 | Artefatos gerados (banco e áudios) entrarem no versionamento | Repositório inflado e push inviável | `.gitignore` com `*.db`, `audio/boletim_*.wav` e `output/` + `git rm --cached` sem apagar arquivos do disco + validação com `git ls-files` | Resolvido (S6) |
 | R7 | Prazo de 1 dia para escopo amplo | Entrega incompleta | Corte de escopo: n8n fora da entrega e nenhuma dependência que exija chave de API; execução em sessões curtas encadeadas (S1–S10), cada uma com commit | Resolvido |
 | R8 | Dependência de serviço externo de TTS e de rede instável | Falha na geração de áudio | TTS 100% local (Kokoro ONNX), operando offline após o download dos modelos | Resolvido (S1/S4) |
+| R9 | Repetição da mesma noticia na narracao (LLM reciclando itens para preencher blocos tematicos) | Roteiro e audio redundantes, qualidade da entrega prejudicada | Diagnostico pelo roteiro gravado no banco + troca para formato linear, regra de mencao unica, proibicao de citar fonte/URL/data e repeat_penalty (1.2, repeat_last_n 1024) no Ollama | Resolvido (S13) |
 
 ## 8. Critérios de aceite e evidências
 

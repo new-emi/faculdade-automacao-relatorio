@@ -32,13 +32,16 @@ Teste rapido (a partir da raiz do projeto):
 
 from __future__ import annotations
 
+import difflib
 import html
 import io
 import re
 import sys
 import time
+import unicodedata
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
+from urllib.parse import parse_qs, urlsplit
 
 import requests
 
@@ -56,8 +59,14 @@ USER_AGENT = "Mozilla/5.0 AI-Factory-Bot/1.0"
 REQUEST_TIMEOUT = 15  # segundos por requisicao
 LIMITE_TEXTO = 500  # tamanho maximo de texto_base, para nao estourar o contexto do LLM
 
+# Deduplicacao de entrada (defesa em profundidade: o LLM tambem e instruido a nao repetir).
+SIMILARIDADE_TITULO_MINIMA = 0.85  # difflib: a partir daqui os dois titulos sao a mesma noticia
+TAMANHO_MINIMO_TITULO = 20  # titulos curtos nao entram na comparacao por similaridade
+
 _TAGS_HTML = re.compile(r"<[^>]+>")
 _COMENTARIOS_HTML = re.compile(r"<!--.*?-->", re.DOTALL)
+_PREFIXO_TITULO = re.compile(r"^(show|ask)\s+hn:\s*", re.IGNORECASE)
+_CHAVE_ITEM_HN = "news.ycombinator.com/item"
 
 
 def _headers() -> dict:
@@ -87,6 +96,78 @@ def _html_para_texto(bruto: str) -> str:
     texto = _COMENTARIOS_HTML.sub(" ", bruto or "")
     texto = _TAGS_HTML.sub(" ", texto)
     return html.unescape(texto)
+
+
+def _normalizar_url(url: str) -> str:
+    """Chave de comparacao da URL: minusculas, sem 'www.', consulta, fragmento e barra final.
+
+    Unica excecao: o fallback do HN para historias sem URL propria e
+    `https://news.ycombinator.com/item?id=<objectID>`. Nesse caso o 'id' e a propria
+    identidade do item (a URL nao tem path significativo), entao ele e preservado —
+    remover a consulta faria todas as historias do HN sem URL propria colapsarem numa
+    so chave.
+    """
+    partes = urlsplit((url or "").strip())
+    host = partes.netloc.lower().removeprefix("www.")
+    chave = host + partes.path.rstrip("/")
+
+    if chave == _CHAVE_ITEM_HN:
+        ident = parse_qs(partes.query).get("id", [""])[0]
+        if ident:
+            return f"{chave}?id={ident}"
+    return chave
+
+
+def _normalizar_titulo(titulo: str) -> str:
+    """Chave de comparacao do titulo: minusculas, sem acentos/pontuacao e espacos colapsados.
+
+    Prefixos de fonte ('Show HN:', 'Ask HN:') sao removidos para que o mesmo assunto
+    publicado nas duas fontes com rotulos diferentes seja reconhecido como duplicata.
+    """
+    texto = _PREFIXO_TITULO.sub("", titulo or "").lower()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(caractere for caractere in texto if not unicodedata.combining(caractere))
+    texto = re.sub(r"[^a-z0-9 ]", " ", texto)
+    return " ".join(texto.split())
+
+
+def _deduplicar(noticias: list[dict]) -> list[dict]:
+    """Remove noticias duplicadas, mantendo sempre a PRIMEIRA ocorrencia (HN antes do Reddit).
+
+    Duas entradas sao consideradas a mesma noticia quando a URL normalizada e igual OU
+    quando a similaridade entre os titulos normalizados (difflib.SequenceMatcher) e
+    >= SIMILARIDADE_TITULO_MINIMA, considerando apenas titulos com pelo menos
+    TAMANHO_MINIMO_TITULO caracteres. A comparacao usa apenas a stdlib.
+    """
+    unicas: list[dict] = []
+    urls_vistas: set[str] = set()
+    titulos_vistos: list[str] = []
+    descartadas = 0
+
+    for noticia in noticias:
+        chave_url = _normalizar_url(noticia.get("url") or "")
+        chave_titulo = _normalizar_titulo(noticia.get("titulo") or "")
+
+        if chave_url and chave_url in urls_vistas:
+            descartadas += 1
+            continue
+
+        if len(chave_titulo) >= TAMANHO_MINIMO_TITULO and any(
+            difflib.SequenceMatcher(None, chave_titulo, visto).ratio()
+            >= SIMILARIDADE_TITULO_MINIMA
+            for visto in titulos_vistos
+        ):
+            descartadas += 1
+            continue
+
+        if chave_url:
+            urls_vistas.add(chave_url)
+        if len(chave_titulo) >= TAMANHO_MINIMO_TITULO:
+            titulos_vistos.append(chave_titulo)
+        unicas.append(noticia)
+
+    print(f"[aviso] {descartadas} noticia(s) descartada(s) por duplicidade entre fontes.")
+    return unicas
 
 
 def _coletar_hn(dias: int, max_por_fonte: int) -> list[dict]:
@@ -239,7 +320,9 @@ def coletar_noticias(dias: int = 1, max_por_fonte: int = 10) -> list[dict]:
 
     Returns:
         Lista de dicts com as chaves fonte, titulo, url, texto_base,
-        data_publicacao e score, ordenada por score decrescente.
+        data_publicacao e score, ordenada por score decrescente e JA DEDUPLICADA
+        entre as fontes (URL normalizada igual ou titulos com similaridade
+        >= 0.85; de cada par duplicado fica a primeira ocorrencia, ou seja, a do HN).
         Nunca levanta excecao: se uma fonte falhar, o aviso vai para o
         console e o resultado da outra fonte e retornado normalmente.
     """
@@ -259,6 +342,7 @@ def coletar_noticias(dias: int = 1, max_por_fonte: int = 10) -> list[dict]:
             print(f"[aviso] fonte {nome} nao retornou noticias (API fora do ar ou sem resultados).")
         noticias.extend(resultado)
 
+    noticias = _deduplicar(noticias)
     noticias.sort(key=lambda n: n["score"], reverse=True)
     return noticias
 

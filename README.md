@@ -245,6 +245,21 @@ python src/audio.py      # coleta, gera roteiro e sintetiza audio/boletim_comple
   proíbe explicitamente inventar fatos, empresas, detalhes técnicos ou significados de
   siglas; com `texto_base` curto ou vazio, o modelo deve se limitar a apresentar o título,
   sem especular.
+- **Roteiro sem repetição.** A primeira versão do prompt mandava "agrupar as notícias por
+  temas", e o modelo de 3B passou a **reciclar itens** para preencher os blocos temáticos
+  (na gravação `id=2` do banco, "Compute:Arena" aparece 3 vezes, "Axiom" 2 vezes e o tema
+  "usar Claude para criar jogos" 2 vezes — a coleta daquela execução **não** tinha
+  duplicatas, o problema era do LLM). O roteiro passou a ser **linear** (introdução curta,
+  notícias uma a uma na ordem recebida, conclusão curta), com **menção única** por notícia
+  (cada item da lista aparece exatamente uma vez, e assunto repetido entre entradas é citado
+  só uma vez), **proibição de citar fonte/prefixo/URL** (nada de `HN:`, `Show HN:`, `Reddit:`
+  ou links) e **proibição de citar data, dia, mês, ano ou horário** (no máximo "hoje"; o
+  roteiro antigo inventava "20 de setembro de 2026"). No Ollama, `temperature=0.6` foi
+  mantida e somaram-se `repeat_penalty=1.2` e `repeat_last_n=1024`, que penalizam trechos
+  repetidos ao longo de **todo** o roteiro (o default do `repeat_last_n` cobre apenas as
+  últimas 64 tokens). Complemento de defesa em profundidade: o `src/coletor.py` agora
+  **deduplica a entrada** por URL normalizada e por similaridade de título
+  (`difflib.SequenceMatcher` >= 0.85, apenas stdlib).
 
 ## 8. Evidências de funcionamento
 
@@ -295,6 +310,10 @@ Saída obtida:
 - **Nome do áudio por data.** Rodar o pipeline mais de uma vez no mesmo dia sobrescreve o WAV
   anterior (o histórico no banco preserva todas as execuções, um registro por linha). Para
   guardar uma edição, renomeie o arquivo antes da próxima execução.
+- **Repetição residual em roteiros longos.** A regra explícita e o `repeat_penalty`
+  reduzem muito o problema, mas um modelo de 3B pode voltar a repetir itens quando recebe
+  muitas notícias numa única execução; a mitigação estrutural é reduzir a quantidade de
+  itens.
 
 ## 10. Roadmap
 

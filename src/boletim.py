@@ -6,6 +6,11 @@ servido pelo Ollama para escrever o roteiro do boletim em pt-BR.
 O LLM trabalha APENAS com o que o coletor entregou (fonte, titulo, url e
 texto_base). Este modulo NAO faz scraping das URLs originais.
 
+O roteiro e LINEAR por design: introducao curta, noticias apresentadas uma a uma
+na ordem da lista e conclusao breve. O prompt proibe blocos/secoes tematicas (que
+levavam o modelo a reciclar noticias para preencher os blocos), a repeticao de um
+item, a mencao a fonte/URL e a citacao de datas.
+
 Cada noticia deve ser um dicionario com as chaves:
     fonte, titulo, url, texto_base, data_publicacao, score
 
@@ -40,9 +45,21 @@ SAIDA_PADRAO = Path("output/boletim_texto.md")
 PROMPT_SISTEMA = (
     "Voce e o ancora do 'Boletim IA', um podcast/relatorio diario sobre o mercado de "
     "Inteligencia Artificial. Seu tom e profissional, dinamico, claro e em PT-BR. Voce deve "
-    "criar um roteiro fluido para ser lido em voz alta: faca uma introducao curta, agrupe as "
-    "noticias por temas (ex: LLMs, Agentes, Mercado, Pesquisas) e cite os titulos de forma "
-    "natural, sem apenas ler uma lista robolica. Termine com uma conclusao breve. "
+    "criar um roteiro fluido para ser lido em voz alta. "
+    "ESTRUTURA LINEAR: comeca com uma introducao curta (2 ou 3 frases), depois apresenta as "
+    "noticias em sequencia, uma a uma, na mesma ordem da lista recebida, e termina com uma "
+    "conclusao curta. NAO divida o roteiro em blocos nem em secoes tematicas (por exemplo, "
+    "'Tendencias de X', 'Novidades em Y'): agrupar por tema obriga a repetir noticias. "
+    "Mencao unica: cada noticia da lista aparece EXATAMENTE UMA VEZ no roteiro. Nunca cite a "
+    "mesma noticia, produto, empresa ou fato duas vezes. Se duas entradas tratarem do mesmo "
+    "assunto, cite apenas uma e siga adiante. Ao final, o roteiro deve mencionar TODAS as "
+    "noticias recebidas, sem sobrar nem repetir nenhuma. "
+    "NUNCA escreva a fonte nem prefixos tecnicos no texto: nada de 'HN:', 'Reddit:', "
+    "'Show HN:', 'Ask HN:', nem URLs. Cite apenas o titulo, de forma natural. "
+    "NAO cite data, dia, mes, ano ou horario; para se referir ao momento, use no maximo 'hoje'. "
+    "CONCISAO: 1 ou 2 frases por noticia, roteiro total de no maximo cerca de 2.400 "
+    "caracteres, em texto corrido, sem marcadores de lista, sem asteriscos e sem titulos em "
+    "negrito. "
     "REGRA CRITICA: NUNCA invente fatos, nomes de empresas, detalhes tecnicos ou "
     "desdobramentos que nao estejam explicitos no titulo ou no texto_base fornecido. Se o "
     "texto_base for curto ou vazio, limite-se a apresentar o titulo e dizer que o tema esta "
@@ -82,7 +99,8 @@ def gerar_boletim(noticias: list[dict]) -> str:
             texto_base, data_publicacao, score).
 
     Returns:
-        Texto do roteiro em markdown, pronto para ser lido em voz alta.
+        Texto do roteiro em pt-BR, em texto corrido (sem markdown), pronto para ser
+        lido em voz alta.
 
     Raises:
         ValueError: se a lista de noticias estiver vazia.
@@ -99,7 +117,13 @@ def gerar_boletim(noticias: list[dict]) -> str:
             {"role": "user", "content": _montar_prompt_usuario(noticias)},
         ],
         "stream": False,
-        "options": {"temperature": TEMPERATURA},
+        "options": {
+            "temperature": TEMPERATURA,
+            # repeat_penalty/repeat_last_n: penalizam a repeticao de trechos ao longo de
+            # todo o roteiro; o default do repeat_last_n observa apenas as ultimas 64 tokens.
+            "repeat_penalty": 1.2,
+            "repeat_last_n": 1024,
+        },
     }
 
     try:
