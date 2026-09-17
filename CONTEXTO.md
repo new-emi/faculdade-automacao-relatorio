@@ -61,6 +61,7 @@
 | 4 | 2026-09-17 | Ajuste LLM + Modulo Audio Kokoro | OK | Audio gerado com sucesso: audio/boletim_completo.wav 3.494.506 B (3412,6 KB), 1747231 amostras, 24000 Hz, PCM_16, 72,80 s, 4 chunks, voz pf_dora; src/audio.py criado; prompt anti-alucinacao em src/boletim.py. |
 | 5 | 2026-09-17 | Orquestrador main.py + DB SQLite | OK | Teste E2E passou. |
 | 6 | 2026-09-17 | Higiene do git (.gitignore + destrackeamento) + README final | OK | .gitignore com *.db, audio/boletim_*.wav e output/; `git rm --cached` em boletim.db, audio/boletim_2026-09-17.wav, audio/boletim_completo.wav e output/boletim_texto.md (arquivos mantidos no disco); README.md criado com 10 secoes e evidencia real do SQLite; commit de task 6 enviado ao origin/main. |
+| 7 | 2026-09-17 | Revisao final + requirements.txt + documentos de entrega (ID 1.1 e ID 2) | OK | requirements.txt com versoes fixadas; .gitignore cobre docs/*.html; README estrutura/instalacao atualizadas; CONTEXTO com secao 4 limpa; docs/ com 2 MD + 2 PDF; commit da task 7 publicado |
 
 ## 6. Fila (definida exclusivamente pelo orquestrador)
 - (vazia; a proxima tarefa chega por prompt)
