@@ -86,7 +86,7 @@ faculdade-automacao-relatorio/
 ├── .gitignore                  # Exclui modelos, banco, áudios de boletim e output/
 ├── docs/                       # Documentos de entrega: diagnóstico (ID 1.1) e Canvas (ID 2)
 ├── src/
-│   ├── coletor.py              # Input: HN Algolia + Reddit (JSON com fallback RSS Atom)
+│   ├── coletor.py              # Input: HN Algolia + Reddit (feed RSS Atom)
 │   ├── boletim.py              # Process: roteiro pt-BR via Ollama /api/chat
 │   ├── audio.py                # Output: TTS Kokoro ONNX -> WAV PCM_16 24 kHz
 │   └── registro.py             # Persistência: tabela `boletins` em SQLite (stdlib)
@@ -222,10 +222,11 @@ python src/audio.py      # coleta, gera roteiro e sintetiza audio/boletim_comple
 ## 7. Decisões técnicas justificadas
 
 - **Fontes públicas sem chave de API.** HN Algolia (`hn.algolia.com/api/v1/search_by_date`)
-  responde 200 sem credencial. No Reddit, o endpoint `r/<sub>/new.json` **responde 403 nesta
-  rede** (bloqueio por IP, com qualquer User-Agent), então o coletor usa a rota **RSS Atom**
-  (`r/<sub>/new/.rss`) como fallback. O acesso anônimo ao Reddit tem rate limit de
-  ~1 requisição/min, e o coletor **espera 60 s** e tenta uma única vez de novo ao receber
+  responde 200 sem credencial. No Reddit, a rota JSON (`r/<sub>/new.json`) foi testada e
+  **responde 403 nesta rede** (bloqueio por IP, com qualquer User-Agent); por isso o coletor usa
+  a rota **RSS Atom** (`r/<sub>/new/.rss`) como **única rota** — o caminho JSON foi removido do
+  código, para não gastar requisições nem poluir o log. O acesso anônimo ao Reddit tem rate limit
+  de ~1 requisição/min, e o coletor **espera 60 s** e tenta uma única vez de novo ao receber
   **HTTP 429**. Decisão alinhada à regra do projeto de não usar serviços com credencial.
 - **SQLite como banco.** O volume é de um registro por execução; um arquivo único com a
   stdlib (`sqlite3`) dispensa servidor, instalação e dependência externa, e já dá consultas

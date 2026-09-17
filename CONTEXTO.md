@@ -9,7 +9,7 @@
 - Windows / PowerShell / editor Zed. Raiz: C:\Users\emily\OneDrive\Documentos\git\faculdade-automacao-relatorio
 - Python 3.11.9 + pip funcional. Pacotes: requests 2.34.2, kokoro-onnx 0.6.1, edge-tts 7.2.8, numpy 2.4.6, onnxruntime, phonemizer, espeakng-loader, soundfile 0.14.0.
 - Sem chaves de API (decisao de seguranca): nao usamos servicos que exigem credencial (NewsAPI, GNews, Reddit OAuth). Coleta apenas em fontes publicas e anonimas.
-- Reddit anonimo a partir desta rede: r/<sub>/new.json responde 403 (bloqueio do Reddit para este IP, com qualquer User-Agent); o fallback r/<sub>/new/.rss (Atom) responde 200. Rate limit anonimo baixo: ~1 requisicao/min por IP (x-ratelimit-reset ~40-60 s) -> HTTP 429 se exceder.
+- Reddit anonimo a partir desta rede: a rota r/<sub>/new.json responde 403 (bloqueio do Reddit para este IP, com qualquer User-Agent); ela foi REMOVIDA do codigo (task 8) e a unica rota usada e o feed Atom r/<sub>/new/.rss, que responde 200. Rate limit anonimo baixo: ~1 requisicao/min por IP (x-ratelimit-reset ~40-60 s) -> HTTP 429 se exceder, com espera de REDDIT_ESPERA_429 s (60 s) e uma nova tentativa.
 - HN Algolia (hn.algolia.com/api/v1/search_by_date) responde 200 sem chave.
 - Ollama ativo em http://localhost:11434, modelo qwen2.5:3b baixado.
 - ffmpeg 9.0.1 (gyan.dev full build) disponivel no PATH. NAO usado ate agora.
@@ -42,7 +42,7 @@
 - E2E (2026-09-17): 20 noticias (HN + Reddit), roteiro de 3185 chars, audio/boletim_2026-09-17.wav de 9.663.850 B (4.831.903 amostras, 24000 Hz, PCM_16, 201,33 s, 11 chunks), registro id=1 gravado em boletim.db (8192 B).
 - Geracao de texto testada: `python src/boletim.py` (dias=2, max_por_fonte=3) -> 6 noticias -> output/boletim_texto.md (2520 chars, pt-BR coeso, ~1 min de geracao).
 - O LLM recebe APENAS fonte/titulo/url/texto_base do coletor: sem scraping das URLs originais. Em titulos curtos do HN (sem texto_base) o modelo tende a inferir contexto -> risco de imprecisao no roteiro.
-- Reddit nesta rede: apenas a rota Atom (.rss) funciona -> nessa rota score = 0 (o endpoint JSON traria upvotes, mas esta bloqueado).
+- Reddit nesta rede: o caminho JSON morto (403 com qualquer User-Agent) foi removido do codigo na task 8; a unica rota e o feed Atom (.rss) e o score dos itens do Reddit e sempre 0 (o feed nao expoe upvotes).
 - HN: poucas historias trazem `story_text`, entao `texto_base` costuma vir vazio nos itens do HN.
 - Smoke test pt-BR OK (sessao 1): audio/smoke.wav (177.260 B, 24000 Hz, 3.69 s, voz pf_dora, RMS 0.055).
 - Higiene do git (tarefa 6): boletim.db, audio/boletim_*.wav e output/ estao FORA do git (destrackeados com `git rm --cached`, arquivos intactos no disco) e cobertos pelo .gitignore; sao artefatos de execucao, reconstruiveis rodando `python main.py`. audio/smoke.wav segue versionado de proposito.
@@ -62,6 +62,7 @@
 | 5 | 2026-09-17 | Orquestrador main.py + DB SQLite | OK | Teste E2E passou. |
 | 6 | 2026-09-17 | Higiene do git (.gitignore + destrackeamento) + README final | OK | .gitignore com *.db, audio/boletim_*.wav e output/; `git rm --cached` em boletim.db, audio/boletim_2026-09-17.wav, audio/boletim_completo.wav e output/boletim_texto.md (arquivos mantidos no disco); README.md criado com 10 secoes e evidencia real do SQLite; commit de task 6 enviado ao origin/main. |
 | 7 | 2026-09-17 | Revisao final + requirements.txt + documentos de entrega (ID 1.1 e ID 2) | OK | requirements.txt com versoes fixadas; .gitignore cobre docs/*.html; README estrutura/instalacao atualizadas; CONTEXTO com secao 4 limpa; docs/ com 2 MD + 2 PDF; commit da task 7 publicado |
+| 8 | 2026-09-17 | Remocao do caminho JSON morto do coletor do Reddit | OK | saidas: _posts_via_json, REDDIT_JSON_TEMPLATE e REDDIT_LIMIT removidos; _posts_reddit usa direto o feed Atom; README e CONTEXTO alinhados; Canvas ID2 (R3) atualizado; smoke `python src/coletor.py` sem avisos de JSON |
 
 ## 6. Fila (definida exclusivamente pelo orquestrador)
 - (vazia; a proxima tarefa chega por prompt)

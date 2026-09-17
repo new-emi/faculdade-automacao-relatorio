@@ -4,18 +4,23 @@ Consome duas fontes publicas que NAO exigem chave de API:
 
     A) Hacker News via Algolia Search API (search_by_date)
        https://hn.algolia.com/api/v1/search_by_date
-    B) Reddit, com duas rotas publicas (a segunda e fallback da primeira):
-       1. JSON -> https://www.reddit.com/r/<sub>/new.json
-       2. Atom -> https://www.reddit.com/r/<sub>/new/.rss
+    B) Reddit, com UMA rota publica (Atom):
+       https://www.reddit.com/r/<sub>/new/.rss
        Subreddits: r/MachineLearning e r/artificial.
        O acesso anonimo ao Reddit tem rate limit baixo (1 req/min por IP),
        entao a rota Atom espera REDDIT_ESPERA_429 s quando recebe HTTP 429.
 
+A rota JSON (r/<sub>/new.json) foi testada nesta rede e responde HTTP 403
+(bloqueio por IP, com qualquer User-Agent) em todas as execucoes. Ela foi
+REMOVIDA do codigo para nao gastar uma requisicao por subreddit nem poluir o
+log com avisos de uma rota que nunca funciona.
+
 Cada noticia e normalizada num dicionario com as chaves:
     fonte, titulo, url, texto_base, data_publicacao, score
 
-Observacao sobre o score do Reddit: o endpoint JSON traz os upvotes; o feed
-Atom nao traz, entao no fallback o score fica 0.
+Observacao sobre o score do Reddit: o feed Atom nao expoe upvotes, entao nos
+itens do Reddit o campo score vem 0 (a chave e mantida por uniformidade do
+dicionario).
 
 Uso:
     from src.coletor import coletar_noticias
@@ -41,9 +46,7 @@ HN_SEARCH_URL = "https://hn.algolia.com/api/v1/search_by_date"
 HN_TERMOS = ("AI", "LLM", "Artificial Intelligence")
 
 REDDIT_SUBREDDITS = ("MachineLearning", "artificial")
-REDDIT_JSON_TEMPLATE = "https://www.reddit.com/r/{sub}/new.json"
 REDDIT_RSS_TEMPLATE = "https://www.reddit.com/r/{sub}/new/.rss"
-REDDIT_LIMIT = 100
 REDDIT_ESPERA_429 = 60  # segundos de espera apos HTTP 429 (x-ratelimit-reset)
 ATOM_NS = {"atom": "http://www.w3.org/2005/Atom"}
 
@@ -143,38 +146,8 @@ def _coletar_hn(dias: int, max_por_fonte: int) -> list[dict]:
     return noticias
 
 
-def _posts_via_json(sub: str) -> list[dict]:
-    """Posts recentes do subreddit pelo endpoint JSON publico."""
-    resposta = requests.get(
-        REDDIT_JSON_TEMPLATE.format(sub=sub),
-        params={"limit": REDDIT_LIMIT, "raw_json": 1},
-        headers=_headers(),
-        timeout=REQUEST_TIMEOUT,
-    )
-    resposta.raise_for_status()
-    posts = resposta.json().get("data", {}).get("children", [])
-
-    itens = []
-    for child in posts:
-        post = child.get("data") or {}
-        criado_em = post.get("created_utc")
-        permalink = f"https://www.reddit.com{post.get('permalink') or ''}"
-        itens.append(
-            {
-                "id": str(post.get("id") or permalink),
-                "titulo": post.get("title") or "",
-                "url": permalink,
-                "texto": post.get("selftext") or "",
-                "data_publicacao": _iso_utc(criado_em) if criado_em else "",
-                "epoch": float(criado_em or 0),
-                "score": int(post.get("score") or 0),
-            }
-        )
-    return itens
-
-
 def _posts_via_rss(sub: str) -> list[dict]:
-    """Fallback: posts recentes do subreddit pelo feed Atom publico.
+    """Posts recentes do subreddit pelo feed Atom publico.
 
     Se o Reddit responder 429 (rate limit anonimo), espera REDDIT_ESPERA_429 s
     e faz uma unica nova tentativa.
@@ -216,16 +189,11 @@ def _posts_via_rss(sub: str) -> list[dict]:
 
 
 def _posts_reddit(sub: str) -> list[dict]:
-    """Tenta a rota JSON; se ela falhar (403/429/timeout), usa o feed Atom."""
-    try:
-        return _posts_via_json(sub)
-    except (requests.RequestException, ValueError) as erro:
-        print(f"[aviso] Reddit r/{sub} via JSON falhou ({erro}); tentando feed RSS.")
-
+    """Posts recentes do subreddit pelo feed Atom publico (unica rota anonima disponivel)."""
     try:
         return _posts_via_rss(sub)
     except (requests.RequestException, ValueError, ET.ParseError) as erro:
-        print(f"[aviso] Reddit r/{sub} via RSS tambem falhou: {erro}")
+        print(f"[aviso] Reddit r/{sub} via RSS falhou: {erro}")
         return []
 
 
