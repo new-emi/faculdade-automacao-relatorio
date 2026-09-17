@@ -51,6 +51,7 @@
 - Documentos de entrega em docs/: `01_diagnostico_id1_1.md`/.pdf (Criterio 1 / ID 1.1) e `02_canvas_id2.md`/.pdf (Criterio 2 / ID 2). Gerados com `scripts/md_para_pdf.py` (Markdown -> HTML) + Chrome headless (`--print-to-pdf`).
 - Revisao final do codigo (pente fino): os 4 modulos + main.py + scripts compilam (`python -m compileall`); boletim.db tem 2 registros (id=1 e id=2, um por execucao); os WAV conferem (audio/boletim_2026-09-17_primeira_execucao.wav 4.831.903 amostras / 24000 Hz / PCM_16 / 201,33 s; audio/boletim_2026-09-17.wav 121,07 s; boletim_completo.wav 72,80 s; smoke.wav 3,69 s); models/ com 325.505.369 B + 28.214.398 B. Nenhum caminho absoluto ou caminho inexistente no codigo. Decisao: main.py usa caminhos relativos a raiz por design (documentado), entao NAO foi alterado, para nao invalidar a evidencia E2E ja registrada.
 - Canvas ID2 alinhado ao historico real (tarefa 11): docs/02_canvas_id2.md/.pdf com tabela de etapas (S7-S10), cronograma (11 commits, a67819e a fe05247), objetivo O4 corrigido e checklist de evidencias apontando o audio preservado e os registros id=1 e id=2.
+- Esclarecimento (tarefa 12): o README (secao 8) registra que o campo caminho_audio guarda o nome do arquivo no momento da geracao — por isso a linha id=1 aponta para audio/boletim_2026-09-17.wav embora o audio esteja preservado como audio/boletim_2026-09-17_primeira_execucao.wav. O boletim.db NAO foi editado: a evidencia original foi mantida intacta.
 
 ## 5. Log de tarefas
 | # | Data | Tarefa | Status | Notas |
@@ -67,6 +68,7 @@
 | 9 | 2026-09-17 | Regularizacao das evidencias E2E na documentacao | OK | README secao 8/9, docs/01 e docs/02 atualizados (2 execucoes: id=1 201,33 s preservado como _primeira_execucao.wav; id=2 121,07 s); PDFs regenerados; codigo nao alterado |
 | 10 | 2026-09-17 | Correcao do tamanho do boletim.db na documentacao (2 registros / 16.384 B) | OK | README secao 8 e CONTEXTO secao 4 alinhados ao tamanho real do banco apos a 2a execucao |
 | 11 | 2026-09-17 | Alinha Canvas ID2 ao historico real de commits | OK | docs/02_canvas_id2.md/.pdf: etapas S7-S10, cronograma com 11 commits, O4 com contagem correta, checklist de evidencias atualizado; PDF regenerado com Chrome headless e HTML intermediario apagado |
+| 12 | 2026-09-17 | Esclarece o campo caminho_audio na documentacao | OK | README secao 8 com a nota sobre o nome do arquivo no momento da geracao; boletim.db preservado sem edicao; nenhuma alteracao de codigo |
 
 ## 6. Fila (definida exclusivamente pelo orquestrador)
 - (vazia; a proxima tarefa chega por prompt)

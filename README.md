@@ -265,7 +265,7 @@ Execução ponta a ponta em **2026-09-17**:
 
 Smoke test do TTS: `audio/smoke.wav` (177.260 B, 24000 Hz, 3,69 s, voz `pf_dora`).
 
-**Sobre o arquivo de áudio.** O nome do WAV usa a data do dia, então rodar o pipeline de novo no mesmo dia sobrescreve o arquivo anterior — o histórico do banco não é sobrescrito, cada execução gera uma linha nova. O áudio da execução documentada acima foi preservado como `audio/boletim_2026-09-17_primeira_execucao.wav` (9.663.850 B, 201,33 s); `audio/boletim_2026-09-17.wav` passou a conter a execução seguinte (registro id=2, 2.905.696 B, 121,07 s), o que comprova a reprodutibilidade do pipeline: duas execuções completas, dois registros independentes.
+**Sobre o arquivo de áudio.** O nome do WAV usa a data do dia, então rodar o pipeline de novo no mesmo dia sobrescreve o arquivo anterior — o histórico do banco não é sobrescrito, cada execução gera uma linha nova. O áudio da execução documentada acima foi preservado como `audio/boletim_2026-09-17_primeira_execucao.wav` (9.663.850 B, 201,33 s); `audio/boletim_2026-09-17.wav` passou a conter a execução seguinte (registro id=2, 2.905.696 B, 121,07 s), o que comprova a reprodutibilidade do pipeline: duas execuções completas, dois registros independentes. Vale notar que o campo `caminho_audio` do banco registra o nome do arquivo no momento da geração — por isso a linha `id=1` aponta para `audio/boletim_2026-09-17.wav` mesmo que o áudio correspondente esteja preservado hoje como `audio/boletim_2026-09-17_primeira_execucao.wav`.
 
 Consulta real ao banco (as duas execuções registradas):
 
