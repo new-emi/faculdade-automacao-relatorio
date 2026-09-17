@@ -16,8 +16,7 @@
 - Kokoro modelos em models/ (kokoro-v1.0.onnx 325.505.369 B, voices-v1.0.bin 28.214.398 B), baixados na sessao 1 via scripts/download_kokoro.py.
 - Fonte dos modelos: a URL do HuggingFace (https://huggingface.co/thewh1teagle/kokoro-onnx/resolve/main/model_files/) responde 401 para acesso anonimo (repo privado/removido); o script cai no fallback das releases oficiais do GitHub (https://github.com/thewh1teagle/kokoro-onnx/releases/tag/model-files-v1.1).
 - models/ esta no .gitignore (arquivos > 100 MB, limite do GitHub). Reconstruir com: python scripts/download_kokoro.py
-- Nao confirmados: pyttsx3.
-- Sobras de sessao anterior citadas no CONTEXTO (bench_ollama.py, scripts/smoke_sqlite.py): NAO existem no working copy na sessao 1. `scripts/smoke_kokoro.py` foi criado nesta sessao (nao e sobra).
+- Vozes pt-BR disponiveis no voices-v1.0.bin: pf_dora, pm_alex, pm_santa (convencao Kokoro: 1o char = idioma, 2o = genero). A voz pt-BR exige espeak-ng para fonemizacao, suprido pelo espeakng-loader (sem instalacao extra).
 
 ## 3. Regras fixas do executor
 - Iniciar toda sessao lendo este arquivo inteiro, antes de qualquer acao.
@@ -45,14 +44,12 @@
 - O LLM recebe APENAS fonte/titulo/url/texto_base do coletor: sem scraping das URLs originais. Em titulos curtos do HN (sem texto_base) o modelo tende a inferir contexto -> risco de imprecisao no roteiro.
 - Reddit nesta rede: apenas a rota Atom (.rss) funciona -> nessa rota score = 0 (o endpoint JSON traria upvotes, mas esta bloqueado).
 - HN: poucas historias trazem `story_text`, entao `texto_base` costuma vir vazio nos itens do HN.
-- ffmpeg 9.0.1-full_build-www.gyan.dev (confirmado no PATH nesta sessao).
-- soundfile 0.14.0 instalado (traz cffi 2.1.1, pycparser 3.0).
-- Modelos Kokoro em models/: kokoro-v1.0.onnx (325.505.369 B) e voices-v1.0.bin (28.214.398 B).
-- Smoke test pt-BR OK: audio/smoke.wav (177.260 B, 24000 Hz, 3.69 s, voz pf_dora, RMS 0.055).
-- Vozes pt-BR disponiveis no voices-v1.0.bin: pf_dora, pm_alex, pm_santa (convencao Kokoro: 1o char = idioma, 2o = genero).
-- Voz pt-BR exige espeak-ng para fonemizacao: funciona via espeakng-loader, sem instalacao extra.
+- Smoke test pt-BR OK (sessao 1): audio/smoke.wav (177.260 B, 24000 Hz, 3.69 s, voz pf_dora, RMS 0.055).
 - Higiene do git (tarefa 6): boletim.db, audio/boletim_*.wav e output/ estao FORA do git (destrackeados com `git rm --cached`, arquivos intactos no disco) e cobertos pelo .gitignore; sao artefatos de execucao, reconstruiveis rodando `python main.py`. audio/smoke.wav segue versionado de proposito.
 - README.md da entrega CRIADO na raiz (tarefa 6): visao geral, problema/solucao, diagrama do pipeline, estrutura, stack, setup/execucao, decisoes tecnicas, evidencias, limitacoes e roadmap.
+- requirements.txt na raiz com versoes fixadas (inclui Markdown, opcional para gerar os PDFs); .gitignore cobre tambem docs/*.html (HTML intermediario do gerador).
+- Documentos de entrega em docs/: `01_diagnostico_id1_1.md`/.pdf (Criterio 1 / ID 1.1) e `02_canvas_id2.md`/.pdf (Criterio 2 / ID 2). Gerados com `scripts/md_para_pdf.py` (Markdown -> HTML) + Chrome headless (`--print-to-pdf`).
+- Revisao final do codigo (pente fino): os 4 modulos + main.py + scripts compilam (`python -m compileall`); boletim.db tem 1 registro identico ao documentado; os 3 WAV conferem (boletim_2026-09-17.wav 4.831.903 amostras / 24000 Hz / PCM_16 / 201,33 s; boletim_completo.wav 72,80 s; smoke.wav 3,69 s); models/ com 325.505.369 B + 28.214.398 B. Nenhum caminho absoluto ou caminho inexistente no codigo. Decisao: main.py usa caminhos relativos a raiz por design (documentado), entao NAO foi alterado, para nao invalidar a evidencia E2E ja registrada.
 
 ## 5. Log de tarefas
 | # | Data | Tarefa | Status | Notas |

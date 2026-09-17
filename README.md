@@ -82,7 +82,9 @@ faculdade-automacao-relatorio/
 ├── main.py                     # Orquestrador: encadeia as 4 etapas do pipeline
 ├── CONTEXTO.md                 # Diário técnico do projeto (estado, log de tarefas, fila)
 ├── README.md                   # Este arquivo
+├── requirements.txt            # Dependências com versões fixadas (pip install -r)
 ├── .gitignore                  # Exclui modelos, banco, áudios de boletim e output/
+├── docs/                       # Documentos de entrega: diagnóstico (ID 1.1) e Canvas (ID 2)
 ├── src/
 │   ├── coletor.py              # Input: HN Algolia + Reddit (JSON com fallback RSS Atom)
 │   ├── boletim.py              # Process: roteiro pt-BR via Ollama /api/chat
@@ -90,7 +92,8 @@ faculdade-automacao-relatorio/
 │   └── registro.py             # Persistência: tabela `boletins` em SQLite (stdlib)
 ├── scripts/
 │   ├── download_kokoro.py      # Baixa os modelos do Kokoro para models/ (retomável)
-│   └── smoke_kokoro.py         # Smoke test do TTS: gera audio/smoke.wav
+│   ├── smoke_kokoro.py         # Smoke test do TTS: gera audio/smoke.wav
+│   └── md_para_pdf.py          # Converte os documentos de docs/ em HTML (para gerar PDF)
 ├── audio/                      # Saída de áudio (boletim_<data>.wav; smoke.wav versionado)
 ├── output/                     # Saídas de texto dos testes (ex.: boletim_texto.md)
 └── models/                     # Modelos Kokoro (fora do git; reconstruir pelo script)
@@ -99,6 +102,16 @@ faculdade-automacao-relatorio/
 `models/`, `boletim.db`, `audio/boletim_*.wav` e `output/` **não são versionados**: são
 artefatos gerados em tempo de execução e reconstruíveis. O `audio/smoke.wav` permanece no
 repositório de propósito, como evidência pequena do funcionamento do TTS.
+
+Em `docs/` ficam os documentos de entrega, em Markdown (fonte) e PDF:
+`01_diagnostico_id1_1.md` (diagnóstico da necessidade — Critério 1 / ID 1.1) e
+`02_canvas_id2.md` (Canvas de planejamento — Critério 2 / ID 2). Depois de editar o Markdown,
+os PDFs são regerados assim:
+
+```powershell
+python scripts/md_para_pdf.py docs/01_diagnostico_id1_1.md docs/02_canvas_id2.md
+# abra o .html gerado no navegador e use Ctrl+P -> Salvar como PDF
+```
 
 ## 5. Stack e pré-requisitos
 
@@ -113,6 +126,7 @@ repositório de propósito, como evidência pequena do funcionamento do TTS.
 | `espeakng-loader` | 0.2.4 — traz o espeak-ng embutido (necessário para pt-BR) |
 | `soundfile` | 0.14.0 — leitura/escrita de WAV |
 | `edge-tts` | 7.2.8 — instalado, **não usado** no pipeline (ver seção 7) |
+| `Markdown` | 3.10.3 — **opcional**, usado só por `scripts/md_para_pdf.py` para gerar os PDFs de `docs/` |
 | Ollama | ativo em `http://localhost:11434`, modelo `qwen2.5:3b` baixado |
 | ffmpeg | 9.0.1 (build full) disponível no `PATH` |
 | Modelos Kokoro | `models/kokoro-v1.0.onnx` (325,5 MB = 325.505.369 B) e `models/voices-v1.0.bin` (28,2 MB = 28.214.398 B), obtidos por `scripts/download_kokoro.py` |
@@ -134,6 +148,12 @@ python -m venv .venv
 ```
 
 ### 6.2 Instalar as dependências
+
+```powershell
+python -m pip install -r requirements.txt
+```
+
+Equivalente manual, sem versões fixadas:
 
 ```powershell
 python -m pip install requests kokoro-onnx numpy onnxruntime phonemizer espeakng-loader soundfile edge-tts

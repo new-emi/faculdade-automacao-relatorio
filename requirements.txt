@@ -1,0 +1,17 @@
+# Dependencias do pipeline "Boletim IA" (Python 3.11).
+# Instalar com: python -m pip install -r requirements.txt
+
+requests==2.34.2
+kokoro-onnx==0.6.1
+numpy==2.4.6
+onnxruntime==1.30.0
+phonemizer==3.4.0
+espeakng-loader==0.2.4
+soundfile==0.14.0
+
+# Instalado, mas NAO usado no pipeline: avaliado e descartado por depender do
+# servico online do Edge (ver README, secao "Decisoes tecnicas justificadas").
+edge-tts==7.2.8
+
+# Opcional: usado apenas por scripts/md_para_pdf.py para gerar os PDFs de docs/.
+Markdown==3.10.3

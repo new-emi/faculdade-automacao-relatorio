@@ -7,6 +7,9 @@ audio/boletim_*.wav
 # Saidas geradas pelos testes (texto do boletim etc.).
 output/
 
+# HTML intermediario do gerador de PDF dos documentos de docs/ (o .md e o .pdf ficam versionados).
+docs/*.html
+
 # Modelos Kokoro (~337 MB, acima do limite de 100 MB por arquivo do GitHub).
 # Reconstruir com: python scripts/download_kokoro.py
 models/
