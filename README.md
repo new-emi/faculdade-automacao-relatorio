@@ -187,8 +187,11 @@ python main.py
 
 O orquestrador executa as **4 etapas** em sequência e imprime o progresso:
 
-1. **Coleta** — `coletar_noticias(dias=1, max_por_fonte=10)` busca até 10 itens por fonte
-   (HN + Reddit).
+1. **Coleta** — `coletar_noticias(dias=1, max_por_fonte=5)` busca até 5 itens por fonte
+   (HN + Reddit), o que dá **~10 notícias por edição**. O limite é intencional: com 5 itens por
+   fonte a lista já cobre o dia, e com 20 notícias o modelo de 3B passou a **omitir** itens do
+   roteiro (ver seção 9). Como o coletor deduplica entre fontes, a edição pode ter menos de
+   10 itens.
 2. **Roteiro** — `gerar_boletim(noticias)` chama o Ollama (`/api/chat`, `qwen2.5:3b`,
    `stream=False`, `temperature=0.6`) e devolve o roteiro em pt-BR.
 3. **Áudio** — `sintetizar_audio(roteiro, "audio/boletim_<AAAA-MM-DD>.wav")` narra o roteiro
@@ -295,6 +298,48 @@ Saída obtida:
 (2, '2026-09-17 04:15:57', 20, 'audio/boletim_2026-09-17.wav', 121.07066666666667)
 ```
 
+### Edição final (após o ajuste anti-repetição)
+
+Depois de corrigir a repetição, a medição mostrou o efeito colateral: com **20 notícias** o
+modelo de 3B passou a **resumir e omitir** itens (um roteiro de 1.440 caracteres cobriu cerca
+de 10 das 20). A edição passou a ser limitada a **~10 notícias** (`MAX_POR_FONTE = 5`, até 5
+por fonte) e o pipeline foi rodado de ponta a ponta em **2026-09-17 04:48:57**:
+
+| Métrica | Valor |
+|---------|-------|
+| Notícias coletadas | 10 (5 HN + 5 Reddit) |
+| Roteiro gerado | 1450 caracteres |
+| Arquivo de áudio | `audio/boletim_2026-09-17.wav` |
+| Tamanho do áudio | 4.007.242 B |
+| Amostras | 2.003.599 |
+| Taxa de amostragem | 24000 Hz |
+| Formato | PCM_16 |
+| Duração | 83,48 s |
+| Chunks de TTS | 4 |
+| Registro no banco | `id=3` em `boletim.db` (o banco acumula 3 execuções) |
+
+O áudio da execução anterior (registro id=2, que repetia notícias) foi preservado antes de ser
+sobrescrito, como `audio/boletim_2026-09-17_segunda_execucao.wav` (5.811.436 B, 121,07 s).
+
+Consulta real ao banco, com as **três** execuções registradas:
+
+```powershell
+python -c "import sqlite3;[print(r[0],r[1],r[2],r[3],round(r[4],2)) for r in sqlite3.connect('boletim.db').execute('SELECT id,data_geracao,qtd_noticias,caminho_audio,duracao_audio_segundos FROM boletins')]"
+```
+
+Saída obtida:
+
+```
+1 2026-09-17 02:34:21 20 audio/boletim_2026-09-17.wav 201.33
+2 2026-09-17 04:15:57 20 audio/boletim_2026-09-17.wav 121.07
+3 2026-09-17 04:48:57 10 audio/boletim_2026-09-17.wav 83.48
+```
+
+No roteiro gravado desta edição **nenhuma notícia aparece duas vezes**. A cobertura dos 10
+itens foi medida em memória em duas amostras (os 10 títulos apareceram nas duas), mas o
+roteiro gravado na execução final cobriu 6 dos 10 itens: a aderência a listas maiores **não é
+garantida** com um modelo de 3B — limitação registrada na seção 9.
+
 ## 9. Limitações conhecidas
 
 - **Risco residual de imprecisão no HN.** O modelo de 3B ainda pode extrapolar detalhes em
@@ -310,10 +355,16 @@ Saída obtida:
 - **Nome do áudio por data.** Rodar o pipeline mais de uma vez no mesmo dia sobrescreve o WAV
   anterior (o histórico no banco preserva todas as execuções, um registro por linha). Para
   guardar uma edição, renomeie o arquivo antes da próxima execução.
-- **Repetição residual em roteiros longos.** A regra explícita e o `repeat_penalty`
-  reduzem muito o problema, mas um modelo de 3B pode voltar a repetir itens quando recebe
-  muitas notícias numa única execução; a mitigação estrutural é reduzir a quantidade de
-  itens.
+- **Repetição corrigida, omissão residual em edições maiores.** A repetição de notícias no
+  roteiro foi **resolvida** na task 13 (formato linear, menção única, proibição de citar
+  fonte/URL/data e `repeat_penalty=1.2` / `repeat_last_n=1024`). O efeito colateral medido foi
+  a **omissão**: com 20 notícias o modelo de 3B resumia e deixava itens de fora de um roteiro
+  limitado a ~2.400 caracteres (1.440 caracteres cobrindo cerca de 10 das 20). A mitigação foi
+  limitar a edição a **~10 notícias** (`MAX_POR_FONTE = 5`), o que melhorou muito a cobertura
+  — nas duas medições em memória os 10 itens apareceram —, mas na execução final o roteiro
+  gravado cobriu 6 dos 10 itens. **A aderência a listas maiores não é garantida com um modelo
+  de 3B**; a mitigação estrutural para roteiros maiores é reduzir ainda mais a quantidade de
+  itens ou aumentar o modelo.
 
 ## 10. Roadmap
 
