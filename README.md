@@ -192,8 +192,8 @@ O orquestrador executa as **4 etapas** em sequência e imprime o progresso:
    fonte a lista já cobre o dia, e com 20 notícias o modelo de 3B passou a **omitir** itens do
    roteiro (ver seção 9). Como o coletor deduplica entre fontes, a edição pode ter menos de
    10 itens.
-2. **Roteiro** — `gerar_boletim(noticias)` chama o Ollama (`/api/chat`, `qwen2.5:3b`,
-   `stream=False`, `temperature=0.6`) e devolve o roteiro em pt-BR.
+2. **Roteiro** — `gerar_boletim(noticias)` envia as notícias ao Ollama em **lotes de 5**
+   (`/api/chat`, `qwen2.5:3b`, `stream=False`, `temperature=0.6`) e concatena os trechos em pt-BR.
 3. **Áudio** — `sintetizar_audio(roteiro, "audio/boletim_<AAAA-MM-DD>.wav")` narra o roteiro
    com a voz `pf_dora`.
 4. **Registro** — a duração é medida com `soundfile` e o `registrar_boletim(...)` grava tudo
@@ -263,10 +263,19 @@ python src/audio.py      # coleta, gera roteiro e sintetiza audio/boletim_comple
   últimas 64 tokens). Complemento de defesa em profundidade: o `src/coletor.py` agora
   **deduplica a entrada** por URL normalizada e por similaridade de título
   (`difflib.SequenceMatcher` >= 0.85, apenas stdlib).
+- **Geração em lotes de 5 notícias.** Mesmo com a edição limitada a ~10 notícias, uma única
+  chamada ao LLM omitia itens (o roteiro de 83,48 s da `id=3` cobriu 6 dos 10). O
+  `gerar_boletim` agora envia as notícias em lotes de `TAMANHO_LOTE = 5`, pede que cada lote
+  cubra **todas** as notícias dele e concatena os trechos na ordem, deixando a introdução no
+  primeiro e a conclusão no último. Com lote de 3 o resultado medido foi pior (4 trechos: o
+  modelo emendou conclusões no meio e voltou a repetir um item), então 5 ficou como valor
+  escolhido por medição. O texto já gerado **não** é repassado ao lote seguinte: isso fazia o
+  modelo repetir as últimas palavras do trecho anterior (`id=5` emendou "Hey pessoal," no meio
+  do roteiro).
 
 ## 8. Evidências de funcionamento
 
-Execução ponta a ponta em **2026-09-17**:
+### 8.1 Primeira execução ponta a ponta (id=1)
 
 | Métrica | Valor |
 |---------|-------|
@@ -279,11 +288,11 @@ Execução ponta a ponta em **2026-09-17**:
 | Formato | PCM_16 |
 | Duração | 201,33 s |
 | Chunks de TTS | 11 |
-| Registro no banco | `id=1` em `boletim.db` (o banco acumula 2 execuções; arquivo de 16.384 B) |
+| Registro no banco | `id=1` em `boletim.db` (primeira linha da tabela `boletins`) |
 
 Smoke test do TTS: `audio/smoke.wav` (177.260 B, 24000 Hz, 3,69 s, voz `pf_dora`).
 
-**Sobre o arquivo de áudio.** O nome do WAV usa a data do dia, então rodar o pipeline de novo no mesmo dia sobrescreve o arquivo anterior — o histórico do banco não é sobrescrito, cada execução gera uma linha nova. O áudio da execução documentada acima foi preservado como `audio/boletim_2026-09-17_primeira_execucao.wav` (9.663.850 B, 201,33 s); `audio/boletim_2026-09-17.wav` passou a conter a execução seguinte (registro id=2, 2.905.696 B, 121,07 s), o que comprova a reprodutibilidade do pipeline: duas execuções completas, dois registros independentes. Vale notar que o campo `caminho_audio` do banco registra o nome do arquivo no momento da geração — por isso a linha `id=1` aponta para `audio/boletim_2026-09-17.wav` mesmo que o áudio correspondente esteja preservado hoje como `audio/boletim_2026-09-17_primeira_execucao.wav`.
+**Sobre o arquivo de áudio.** O nome do WAV usa a data do dia, então rodar o pipeline de novo no mesmo dia sobrescreve o arquivo anterior — o histórico do banco não é sobrescrito (cada execução gera uma linha nova) e as execuções anteriores são preservadas com outro nome (ver 8.2). O campo `caminho_audio` guarda o nome do arquivo **no momento da geração**, por isso todas as linhas do banco apontam para `audio/boletim_2026-09-17.wav` mesmo que o arquivo contenha hoje o áudio de outra execução.
 
 Consulta real ao banco (as duas execuções registradas):
 
@@ -298,30 +307,44 @@ Saída obtida:
 (2, '2026-09-17 04:15:57', 20, 'audio/boletim_2026-09-17.wav', 121.07066666666667)
 ```
 
-### Edição final (após o ajuste anti-repetição)
+### 8.2 Ajustes feitos ouvindo o áudio e edição final (id=4)
 
-Depois de corrigir a repetição, a medição mostrou o efeito colateral: com **20 notícias** o
-modelo de 3B passou a **resumir e omitir** itens (um roteiro de 1.440 caracteres cobriu cerca
-de 10 das 20). A edição passou a ser limitada a **~10 notícias** (`MAX_POR_FONTE = 5`, até 5
-por fonte) e o pipeline foi rodado de ponta a ponta em **2026-09-17 04:48:57**:
+Os números de 8.1 são da primeira execução; as execuções seguintes existem para corrigir
+problemas encontrados **ouvindo o áudio**, e cada passo foi medido, não estimado:
+
+1. **Repetição (id=2).** O prompt pedia blocos temáticos e o modelo de 3B reciclava itens para
+   preenchê-los ("Compute:Arena" 3 vezes, "Axiom" 2 vezes). A lista de entrada daquela execução
+   foi verificada: **sem duplicatas** — o problema estava no LLM, não na coleta.
+2. **Correção da repetição (id=3).** Roteiro linear, menção única, proibição de citar
+   fonte/URL/data e `repeat_penalty`. Efeito colateral medido: com **20 notícias** o modelo passou
+   a resumir e omitir (roteiro de 1.440 caracteres cobrindo ~10 de 20), e a edição foi limitada a
+   ~10 notícias (`MAX_POR_FONTE = 5`).
+3. **Cobertura (id=4).** Ainda com 10 notícias numa única chamada o modelo omitia itens (o
+   roteiro de 83,48 s da `id=3` cobriu 6 de 10). A geração passou a ser feita **em lotes de 5
+   notícias** (`TAMANHO_LOTE = 5`), com abertura no primeiro trecho e conclusão no último.
+   Resultado medido na edição do dia: **10 de 10 notícias cobertas e nenhuma repetida**.
 
 | Métrica | Valor |
 |---------|-------|
+| Data/hora da execução | 2026-09-17 05:02:04 |
 | Notícias coletadas | 10 (5 HN + 5 Reddit) |
-| Roteiro gerado | 1450 caracteres |
-| Arquivo de áudio | `audio/boletim_2026-09-17.wav` |
-| Tamanho do áudio | 4.007.242 B |
-| Amostras | 2.003.599 |
+| Roteiro gerado | 2.266 caracteres |
+| Arquivo de áudio | `audio/boletim_2026-09-17.wav` (cópia de segurança: `audio/boletim_2026-09-17_edicao_final.wav`) |
+| Tamanho do áudio | 6.668.230 B |
+| Amostras | 3.334.093 |
 | Taxa de amostragem | 24000 Hz |
 | Formato | PCM_16 |
-| Duração | 83,48 s |
-| Chunks de TTS | 4 |
-| Registro no banco | `id=3` em `boletim.db` (o banco acumula 3 execuções) |
+| Duração | 138,92 s |
+| Chunks de TTS | 9 |
+| Registro no banco | `id=4` em `boletim.db` |
 
-O áudio da execução anterior (registro id=2, que repetia notícias) foi preservado antes de ser
-sobrescrito, como `audio/boletim_2026-09-17_segunda_execucao.wav` (5.811.436 B, 121,07 s).
+Áudios das execuções anteriores preservados (fora do git, como todos os WAVs de boletim):
+`..._primeira_execucao.wav` (id=1, 201,33 s), `..._segunda_execucao.wav` (id=2, 121,07 s, repete
+notícia) e `..._terceira_execucao.wav` (id=3, 83,48 s, cobriu 6 de 10). Uma execução de teste
+posterior (id=5, 93,11 s) foi **descartada** por emendar uma saudação no meio do roteiro, na
+costura entre os lotes; o código foi corrigido e o áudio dela não foi preservado.
 
-Consulta real ao banco, com as **três** execuções registradas:
+Consulta real ao banco, com as **cinco** execuções registradas:
 
 ```powershell
 python -c "import sqlite3;[print(r[0],r[1],r[2],r[3],round(r[4],2)) for r in sqlite3.connect('boletim.db').execute('SELECT id,data_geracao,qtd_noticias,caminho_audio,duracao_audio_segundos FROM boletins')]"
@@ -333,12 +356,9 @@ Saída obtida:
 1 2026-09-17 02:34:21 20 audio/boletim_2026-09-17.wav 201.33
 2 2026-09-17 04:15:57 20 audio/boletim_2026-09-17.wav 121.07
 3 2026-09-17 04:48:57 10 audio/boletim_2026-09-17.wav 83.48
+4 2026-09-17 05:02:04 10 audio/boletim_2026-09-17.wav 138.92
+5 2026-09-17 05:06:00 10 audio/boletim_2026-09-17.wav 93.11
 ```
-
-No roteiro gravado desta edição **nenhuma notícia aparece duas vezes**. A cobertura dos 10
-itens foi medida em memória em duas amostras (os 10 títulos apareceram nas duas), mas o
-roteiro gravado na execução final cobriu 6 dos 10 itens: a aderência a listas maiores **não é
-garantida** com um modelo de 3B — limitação registrada na seção 9.
 
 ## 9. Limitações conhecidas
 
@@ -355,16 +375,15 @@ garantida** com um modelo de 3B — limitação registrada na seção 9.
 - **Nome do áudio por data.** Rodar o pipeline mais de uma vez no mesmo dia sobrescreve o WAV
   anterior (o histórico no banco preserva todas as execuções, um registro por linha). Para
   guardar uma edição, renomeie o arquivo antes da próxima execução.
-- **Repetição corrigida, omissão residual em edições maiores.** A repetição de notícias no
-  roteiro foi **resolvida** na task 13 (formato linear, menção única, proibição de citar
-  fonte/URL/data e `repeat_penalty=1.2` / `repeat_last_n=1024`). O efeito colateral medido foi
-  a **omissão**: com 20 notícias o modelo de 3B resumia e deixava itens de fora de um roteiro
-  limitado a ~2.400 caracteres (1.440 caracteres cobrindo cerca de 10 das 20). A mitigação foi
-  limitar a edição a **~10 notícias** (`MAX_POR_FONTE = 5`), o que melhorou muito a cobertura
-  — nas duas medições em memória os 10 itens apareceram —, mas na execução final o roteiro
-  gravado cobriu 6 dos 10 itens. **A aderência a listas maiores não é garantida com um modelo
-  de 3B**; a mitigação estrutural para roteiros maiores é reduzir ainda mais a quantidade de
-  itens ou aumentar o modelo.
+- **Repetição resolvida; cobertura agora é estrutural, com ressalvas medidas.** A repetição de
+  notícias no roteiro foi resolvida na task 13 (formato linear, menção única, proibição de citar
+  fonte/URL/data e `repeat_penalty=1.2` / `repeat_last_n=1024`). O efeito colateral medido foi a
+  **omissão** (com 20 notícias o 3B resumia e deixava itens de fora; com 10 numa única chamada,
+  cobriu 6 de 10) e a mitigação adotada foi a **geração em lotes de 5 notícias**, que elevou a
+  cobertura da edição final para **10 de 10**. Ainda assim: (a) a aderência não é garantida em
+  roteiros maiores — a mitigação é reduzir o número de itens por lote ou aumentar o modelo; e (b)
+  a costura entre os lotes pode produzir transições secas (a passagem do trecho anterior ao lote
+  seguinte foi removida justamente por causar eco do texto já dito).
 
 ## 10. Roadmap
 
