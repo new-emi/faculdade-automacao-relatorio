@@ -292,7 +292,7 @@ python src/audio.py      # coleta, gera roteiro e sintetiza audio/boletim_comple
 
 Smoke test do TTS: `audio/smoke.wav` (177.260 B, 24000 Hz, 3,69 s, voz `pf_dora`).
 
-**Sobre o arquivo de áudio.** O nome do WAV usa a data do dia, então rodar o pipeline de novo no mesmo dia sobrescreve o arquivo anterior — o histórico do banco não é sobrescrito (cada execução gera uma linha nova) e as execuções anteriores são preservadas com outro nome (ver 8.2). O campo `caminho_audio` guarda o nome do arquivo **no momento da geração**, por isso todas as linhas do banco apontam para `audio/boletim_2026-09-17.wav` mesmo que o arquivo contenha hoje o áudio de outra execução.
+**Sobre o arquivo de áudio.** O nome do WAV usa a data do dia, então rodar o pipeline de novo no mesmo dia **substitui** o arquivo anterior: só a última edição fica no disco. O histórico do banco **não** é sobrescrito (cada execução gera uma linha nova) e o campo `caminho_audio` guarda o nome do arquivo **no momento da geração** — por isso todas as linhas apontam para `audio/boletim_2026-09-17.wav` mesmo que o arquivo contenha hoje o áudio da execução mais recente.
 
 Consulta real ao banco (as duas execuções registradas):
 
@@ -338,11 +338,7 @@ problemas encontrados **ouvindo o áudio**, e cada passo foi medido, não estima
 | Chunks de TTS | 9 |
 | Registro no banco | `id=4` em `boletim.db` |
 
-Áudios das execuções anteriores preservados (fora do git, como todos os WAVs de boletim):
-`..._primeira_execucao.wav` (id=1, 201,33 s), `..._segunda_execucao.wav` (id=2, 121,07 s, repete
-notícia) e `..._terceira_execucao.wav` (id=3, 83,48 s, cobriu 6 de 10). Uma execução de teste
-posterior (id=5, 93,11 s) foi **descartada** por emendar uma saudação no meio do roteiro, na
-costura entre os lotes; o código foi corrigido e o áudio dela não foi preservado.
+Os áudios das execuções anteriores foram **descartados** para manter o diretório limpo (id=1 a id=3 e a execução de teste id=5, cujo áudio emendava uma saudação no meio do roteiro — o código foi corrigido depois disso): no disco fica apenas o WAV da edição final, `audio/boletim_2026-09-17.wav`, e as cinco execuções continuam registradas no `boletim.db`.
 
 Consulta real ao banco, com as **cinco** execuções registradas:
 
@@ -372,9 +368,9 @@ Saída obtida:
   posts do Reddit é neutro.
 - **Sem scraping.** O LLM só vê título, URL e um texto curto (`texto_base` truncado em ~500
   caracteres). A profundidade do roteiro fica limitada ao que a fonte publica.
-- **Nome do áudio por data.** Rodar o pipeline mais de uma vez no mesmo dia sobrescreve o WAV
-  anterior (o histórico no banco preserva todas as execuções, um registro por linha). Para
-  guardar uma edição, renomeie o arquivo antes da próxima execução.
+- **Nome do áudio por data.** Rodar o pipeline mais de uma vez no mesmo dia substitui o WAV
+  anterior (o histórico no banco preserva todas as execuções, um registro por linha; no disco
+  fica apenas a última edição).
 - **Repetição resolvida; cobertura agora é estrutural, com ressalvas medidas.** A repetição de
   notícias no roteiro foi resolvida na task 13 (formato linear, menção única, proibição de citar
   fonte/URL/data e `repeat_penalty=1.2` / `repeat_last_n=1024`). O efeito colateral medido foi a
