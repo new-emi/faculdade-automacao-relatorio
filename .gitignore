@@ -1,3 +1,12 @@
+# Banco SQLite gerado em tempo de execucao.
+*.db
+
+# Audios grandes do boletim (o smoke.wav continua versionado de proposito).
+audio/boletim_*.wav
+
+# Saidas geradas pelos testes (texto do boletim etc.).
+output/
+
 # Modelos Kokoro (~337 MB, acima do limite de 100 MB por arquivo do GitHub).
 # Reconstruir com: python scripts/download_kokoro.py
 models/

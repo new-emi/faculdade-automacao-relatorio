@@ -51,6 +51,8 @@
 - Smoke test pt-BR OK: audio/smoke.wav (177.260 B, 24000 Hz, 3.69 s, voz pf_dora, RMS 0.055).
 - Vozes pt-BR disponiveis no voices-v1.0.bin: pf_dora, pm_alex, pm_santa (convencao Kokoro: 1o char = idioma, 2o = genero).
 - Voz pt-BR exige espeak-ng para fonemizacao: funciona via espeakng-loader, sem instalacao extra.
+- Higiene do git (tarefa 6): boletim.db, audio/boletim_*.wav e output/ estao FORA do git (destrackeados com `git rm --cached`, arquivos intactos no disco) e cobertos pelo .gitignore; sao artefatos de execucao, reconstruiveis rodando `python main.py`. audio/smoke.wav segue versionado de proposito.
+- README.md da entrega CRIADO na raiz (tarefa 6): visao geral, problema/solucao, diagrama do pipeline, estrutura, stack, setup/execucao, decisoes tecnicas, evidencias, limitacoes e roadmap.
 
 ## 5. Log de tarefas
 | # | Data | Tarefa | Status | Notas |
@@ -61,6 +63,7 @@
 | 3 | 2026-09-17 | Gerador de boletim via Ollama | OK | Teste passou. |
 | 4 | 2026-09-17 | Ajuste LLM + Modulo Audio Kokoro | OK | Audio gerado com sucesso: audio/boletim_completo.wav 3.494.506 B (3412,6 KB), 1747231 amostras, 24000 Hz, PCM_16, 72,80 s, 4 chunks, voz pf_dora; src/audio.py criado; prompt anti-alucinacao em src/boletim.py. |
 | 5 | 2026-09-17 | Orquestrador main.py + DB SQLite | OK | Teste E2E passou. |
+| 6 | 2026-09-17 | Higiene do git (.gitignore + destrackeamento) + README final | OK | .gitignore com *.db, audio/boletim_*.wav e output/; `git rm --cached` em boletim.db, audio/boletim_2026-09-17.wav, audio/boletim_completo.wav e output/boletim_texto.md (arquivos mantidos no disco); README.md criado com 10 secoes e evidencia real do SQLite; commit de task 6 enviado ao origin/main. |
 
 ## 6. Fila (definida exclusivamente pelo orquestrador)
 - (vazia; a proxima tarefa chega por prompt)
