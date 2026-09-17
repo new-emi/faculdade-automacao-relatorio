@@ -261,7 +261,7 @@ Execução ponta a ponta em **2026-09-17**:
 | Formato | PCM_16 |
 | Duração | 201,33 s |
 | Chunks de TTS | 11 |
-| Registro no banco | `id=1` em `boletim.db` (arquivo de 8192 B) |
+| Registro no banco | `id=1` em `boletim.db` (o banco acumula 2 execuções; arquivo de 16.384 B) |
 
 Smoke test do TTS: `audio/smoke.wav` (177.260 B, 24000 Hz, 3,69 s, voz `pf_dora`).
 
