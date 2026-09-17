@@ -265,7 +265,9 @@ Execução ponta a ponta em **2026-09-17**:
 
 Smoke test do TTS: `audio/smoke.wav` (177.260 B, 24000 Hz, 3,69 s, voz `pf_dora`).
 
-Consulta real ao banco, executada na criação deste README:
+**Sobre o arquivo de áudio.** O nome do WAV usa a data do dia, então rodar o pipeline de novo no mesmo dia sobrescreve o arquivo anterior — o histórico do banco não é sobrescrito, cada execução gera uma linha nova. O áudio da execução documentada acima foi preservado como `audio/boletim_2026-09-17_primeira_execucao.wav` (9.663.850 B, 201,33 s); `audio/boletim_2026-09-17.wav` passou a conter a execução seguinte (registro id=2, 2.905.696 B, 121,07 s), o que comprova a reprodutibilidade do pipeline: duas execuções completas, dois registros independentes.
+
+Consulta real ao banco (as duas execuções registradas):
 
 ```powershell
 python -c "import sqlite3;print(*sqlite3.connect('boletim.db').execute('SELECT id, data_geracao, qtd_noticias, caminho_audio, duracao_audio_segundos FROM boletins').fetchall(), sep='\n')"
@@ -275,6 +277,7 @@ Saída obtida:
 
 ```
 (1, '2026-09-17 02:34:21', 20, 'audio/boletim_2026-09-17.wav', 201.32929166666668)
+(2, '2026-09-17 04:15:57', 20, 'audio/boletim_2026-09-17.wav', 121.07066666666667)
 ```
 
 ## 9. Limitações conhecidas
@@ -289,6 +292,9 @@ Saída obtida:
   posts do Reddit é neutro.
 - **Sem scraping.** O LLM só vê título, URL e um texto curto (`texto_base` truncado em ~500
   caracteres). A profundidade do roteiro fica limitada ao que a fonte publica.
+- **Nome do áudio por data.** Rodar o pipeline mais de uma vez no mesmo dia sobrescreve o WAV
+  anterior (o histórico no banco preserva todas as execuções, um registro por linha). Para
+  guardar uma edição, renomeie o arquivo antes da próxima execução.
 
 ## 10. Roadmap
 

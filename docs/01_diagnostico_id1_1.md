@@ -75,4 +75,4 @@ O protótipo é considerado bem-sucedido quando um único comando gera, de ponta
 2. Roteiro em português produzido pelo LLM a partir de notícias reais do dia.
 3. Registro da edição na tabela `boletins` (`boletim.db`), recuperável por consulta SQL.
 
-**Resultado obtido:** execução E2E real em 17/09/2026 gerou 20 notícias coletadas, roteiro de 3.185 caracteres, áudio de 201,33 s (9.663.850 bytes, 24 kHz, PCM 16 bits) e registro `id=1` no banco — validado por consulta SQL direta.
+**Resultado obtido:** execução E2E real em 17/09/2026 gerou 20 notícias coletadas, roteiro de 3.185 caracteres, áudio de 201,33 s (9.663.850 bytes, 24 kHz, PCM 16 bits) e registro `id=1` no banco — validado por consulta SQL direta. O áudio dessa execução foi preservado como `audio/boletim_2026-09-17_primeira_execucao.wav`, porque o pipeline foi rodado novamente no mesmo dia e o nome do arquivo (que usa a data) foi sobrescrito. A segunda execução, completa e independente, gerou o registro `id=2` (121,07 s), confirmando a reprodutibilidade do pipeline.
