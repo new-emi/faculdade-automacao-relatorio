@@ -31,7 +31,10 @@
 ## 4. Estado atual
 - Sessao 1 concluida: ambiente de audio pronto (TTS testado, audio/smoke.wav OK).
 - Sessao 2 concluida: Input do pipeline pronto em src/coletor.py (`coletar_noticias(dias, max_por_fonte)` -> HN + Reddit normalizados).
-- Pipeline: Input OK (src/coletor.py) + Output/TTS validado (kokoro). FALTAM o Process (curadoria/resumo via LLM Ollama qwen2.5:3b) e o DB (SQLite).
+- Sessao 3 concluida: Process pronto em src/boletim.py (`gerar_boletim(noticias)` -> roteiro pt-BR via Ollama /api/chat, modelo qwen2.5:3b, stream=False, temperature=0.6).
+- Pipeline: Input OK (src/coletor.py) + Process OK (src/boletim.py) + Output/TTS validado (kokoro). FALTAM: integrar o TTS (Kokoro) ao pipeline (boletim.py -> audio/) e o DB (SQLite).
+- Geracao de texto testada: `python src/boletim.py` (dias=2, max_por_fonte=3) -> 6 noticias -> output/boletim_texto.md (2520 chars, pt-BR coeso, ~1 min de geracao).
+- O LLM recebe APENAS fonte/titulo/url/texto_base do coletor: sem scraping das URLs originais. Em titulos curtos do HN (sem texto_base) o modelo tende a inferir contexto -> risco de imprecisao no roteiro.
 - Reddit nesta rede: apenas a rota Atom (.rss) funciona -> nessa rota score = 0 (o endpoint JSON traria upvotes, mas esta bloqueado).
 - HN: poucas historias trazem `story_text`, entao `texto_base` costuma vir vazio nos itens do HN.
 - ffmpeg 9.0.1-full_build-www.gyan.dev (confirmado no PATH nesta sessao).
@@ -47,6 +50,7 @@
 | 0 | 2026-09-17 | Criacao do CONTEXTO.md | OK | sessao 0 |
 | 1 | 2026-09-17 | Preparacao ambiente audio (ffmpeg, soundfile, kokoro download, smoke) | OK | ffmpeg 9.0.1 ja no PATH; soundfile 0.14.0 instalado; HF deu 401 -> fallback GitHub releases; smoke.wav 177 KB; models/ fora do git (>100 MB) |
 | 2 | 2026-09-17 | Modulo coletor HN+Reddit (src/coletor.py) | OK | smoke `python src/coletor.py` (dias=3, max_por_fonte=5) -> 10 noticias (5 HN + 5 Reddit); Reddit .json deu 403 -> fallback .rss com espera de 60 s no 429; requests 2.34.2 |
+| 3 | 2026-09-17 | Gerador de boletim via Ollama | OK | Teste passou. |
 
 ## 6. Fila (definida exclusivamente pelo orquestrador)
 - (vazia; a proxima tarefa chega por prompt)
