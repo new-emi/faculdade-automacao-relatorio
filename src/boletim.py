@@ -15,6 +15,14 @@ A geracao acontece em LOTES de TAMANHO_LOTE noticias: com a lista inteira de uma
 um modelo de 3B omitia itens. Cada lote produz um trecho do roteiro (a abertura fica no
 primeiro e a conclusao no ultimo) e os trechos sao concatenados na ordem da lista.
 
+Como as noticias-fonte sao escritas em INGLES, o modelo de 3B as vezes responde no idioma
+da entrada (na edicao id=10 o segundo lote saiu inteiramente em ingles, e o audio narrou
+isso). Por isso cada trecho passa por uma REVISAO antes de entrar no roteiro:
+`parece_portugues` mede a proporcao de marcadores de portugues e de ingles no texto gerado
+e `_tem_despedida` detecta despedida em trecho que nao e o ultimo. Trecho reprovado e
+reenviado ao modelo com a lista de problemas e, se a reprovacao persistir, o pipeline
+falha com mensagem clara em vez de gravar um audio em ingles.
+
 Cada noticia deve ser um dicionario com as chaves:
     fonte, titulo, url, texto_base, data_publicacao, score
 
@@ -32,7 +40,9 @@ Teste rapido (a partir da raiz do projeto, com o Ollama ativo):
 from __future__ import annotations
 
 import io
+import re
 import sys
+import unicodedata
 from pathlib import Path
 
 import requests
@@ -49,6 +59,54 @@ SAIDA_PADRAO = Path("output/boletim_texto.md")
 # Noticias por chamada ao LLM. Com a lista inteira (10 itens ou mais) o modelo de 3B
 # resumia/omitia noticias; em lotes pequenos ele cobre o que recebe.
 TAMANHO_LOTE = 5
+
+# Revisao de idioma/despedida dos trechos: quantas vezes um trecho reprovado e reenviado
+# ao modelo (com a lista de problemas) antes de desistir.
+TENTATIVAS_POR_TRECHO = 2
+
+# Abaixo disso nao ha marcadores suficientes para julgar o idioma: o trecho e aceito.
+# Valores medidos: paragrafos em ingles do id=10 tiveram 4 a 8 marcadores de ingles e zero de
+# portugues; paragrafos legitimos em portugues do mesmo roteiro tiveram de 4 a 10 de portugues.
+MINIMO_EVIDENCIA_IDIOMA = 4
+
+# Marcadores de idioma usados na revisao. Apenas palavras funcionais distintivas de cada
+# idioma: termos ambiguos ("a", "o", "e", "as", "os", "no", "do", "se", "em") ficam de
+# fora para nao gerar falso positivo.
+_MARCADORES_PT = frozenset(
+    "que para com nao de da uma um dos das pela pelo mais como tambem sobre entre quando "
+    "ainda mas isso essa esse este esta sao foi ser seu sua seus suas aos nas nos qual "
+    "quais porque entao ja sem sob desde conforme num numa dele dela eles elas voce tem "
+    "ha pode podem deve fazer ter muito onde depois antes durante enquanto apenas cada "
+    "outro outra todos todas mesma mesmo isto aquele aquela aqui".split()
+)
+_MARCADORES_EN = frozenset(
+    "the of and to in is are was were that this with for from have has had been they "
+    "their there which would could should about into than then these those some such "
+    "only may what when where who how its it on at by an but not can will more other "
+    "after over because between many since while within often like most every through "
+    "during against".split()
+)
+_PALAVRA = re.compile(r"[a-z]+")
+
+# Despedidas que so podem aparecer no ultimo trecho do roteiro.
+_DESPEDIDAS = (
+    "ate a proxima",
+    "ate o proximo",
+    "ate la",
+    "nos vemos",
+    "fico por aqui",
+    "ficamos por aqui",
+    "encerro por aqui",
+    "por hoje e isso",
+    "e isso pessoal",
+    "e encerramos",
+    "obrigado por ouvir",
+    "espero que voce tenha gostado",
+    "espero que tenha gostado",
+    "boa sorte e bom trabalho",
+    "no proximo boletim",
+    "no proximo encontro",
+)
 
 PROMPT_SISTEMA = (
     "Voce e o ancora do 'Boletim IA', um podcast/relatorio diario sobre o mercado de "
@@ -68,10 +126,11 @@ PROMPT_SISTEMA = (
     "NUNCA escreva a fonte nem prefixos tecnicos no texto: nada de 'HN:', 'Reddit:', "
     "'Show HN:', 'Ask HN:', nem URLs. Cite apenas o titulo, de forma natural. "
     "NAO cite data, dia, mes, ano ou horario; para se referir ao momento, use no maximo 'hoje'. "
-    "IDIOMA UNICO: escreva SOMENTE em portugues do Brasil e apenas com caracteres latinos — "
-    "nunca misture outros idiomas nem outros alfabetos (nada de caracteres chineses, cirilicos, "
-    "arabes ou emoji). NUNCA escreva marcadores como '[link]', '[site]' ou '[R]', nem colchetes "
-    "de qualquer tipo, e nunca escreva URLs. "
+    "IDIOMA UNICO: as noticias recebidas estao em INGLES, mas voce escreve SOMENTE em portugues "
+    "do Brasil e apenas com caracteres latinos — traduza o sentido, nunca copie frases em ingles "
+    "e nunca responda em ingles. Nunca misture outros idiomas nem outros alfabetos (nada de "
+    "caracteres chineses, cirilicos, arabes ou emoji). NUNCA escreva marcadores como '[link]', "
+    "'[site]' ou '[R]', nem colchetes de qualquer tipo, e nunca escreva URLs. "
     "CONCISAO: 1 ou 2 frases por noticia, trecho de no maximo cerca de 1.200 caracteres, em "
     "texto corrido, sem marcadores de lista, sem asteriscos e sem titulos em negrito. "
     "Nunca afirme que a cobertura esta completa, nem avalie ou elogie a qualidade do proprio "
@@ -148,21 +207,99 @@ def _montar_prompt_lote(
         "fatos, numeros ou citacoes e nunca afirme que a cobertura esta completa nem avalie a "
         "qualidade do proprio texto."
     )
+    # Repetido no fim de proposito: a ultima instrucao lida e a que mais pesa num modelo de 3B.
+    partes.append(
+        "IDIOMA DA RESPOSTA: o material acima esta em ingles, mas o roteiro e escrito em "
+        "PORTUGUES DO BRASIL. Traduza o sentido do titulo e do texto base; nunca copie frases "
+        "em ingles e nunca responda em ingles."
+    )
     return "\n".join(partes)
 
 
-def _chamar_ollama(mensagem_usuario: str) -> str:
-    """Envia uma mensagem ao Ollama e devolve o texto gerado.
+def _sem_acentos(texto: str) -> str:
+    """Devolve o texto em minusculas e sem acentos, para casar com os marcadores de idioma."""
+    decomposto = unicodedata.normalize("NFKD", (texto or "").lower())
+    return "".join(caractere for caractere in decomposto if not unicodedata.combining(caractere))
+
+
+def _contar_marcadores(texto: str) -> tuple[int, int]:
+    """Conta marcadores de portugues e de ingles no texto (palavras funcionais)."""
+    palavras = _PALAVRA.findall(_sem_acentos(texto))
+    portugues = sum(1 for palavra in palavras if palavra in _MARCADORES_PT)
+    ingles = sum(1 for palavra in palavras if palavra in _MARCADORES_EN)
+    return portugues, ingles
+
+
+def parece_portugues(texto: str, minimo_evidencia: int = MINIMO_EVIDENCIA_IDIOMA) -> bool:
+    """Heuristica de idioma para barrar trecho escrito em ingles.
+
+    Compara a quantidade de palavras funcionais tipicas de portugues e de ingles: o trecho e
+    considerado portugues quando tem MAIS marcadores de portugues do que de ingles. Os
+    marcadores de cada idioma sao palavras funcionais, que dominam qualquer texto corrido em
+    portugues, entao a exigencia de margem positiva nao gera falso positivo nos roteiros reais
+    (medidos de 48x0 a 83x35). Texto curto demais para dar sinal (menos de `minimo_evidencia`
+    marcadores somados) e aceito, para nao reprovar uma frase curta legitima por falta de
+    amostra.
+
+    Args:
+        texto: trecho gerado pelo LLM.
+        minimo_evidencia: quantidade minima de marcadores para julgar o idioma.
+    """
+    portugues, ingles = _contar_marcadores(texto)
+    if portugues + ingles < minimo_evidencia:
+        return True
+    return portugues > ingles
+
+
+def _tem_despedida(texto: str) -> bool:
+    """Indica se o trecho traz uma despedida (reservada ao ultimo trecho do roteiro)."""
+    limpo = _sem_acentos(texto)
+    return any(formula in limpo for formula in _DESPEDIDAS)
+
+
+def _revisar_trecho(texto: str, ultimo: bool) -> list[str]:
+    """Lista os problemas de um trecho gerado; lista vazia significa trecho aprovado.
+
+    Args:
+        texto: trecho gerado pelo LLM.
+        ultimo: True quando o trecho e o ultimo do roteiro (pode concluir e se despedir).
+    """
+    problemas: list[str] = []
+    if not parece_portugues(texto):
+        portugues, ingles = _contar_marcadores(texto)
+        problemas.append(
+            f"escrito em ingles (marcadores de portugues: {portugues}; de ingles: {ingles})"
+        )
+    if not ultimo and _tem_despedida(texto):
+        problemas.append("tem despedida, que so pode aparecer no ultimo trecho do roteiro")
+    return problemas
+
+
+def _instrucao_corretiva(problemas: list[str]) -> str:
+    """Mensagem que reenvia o trecho reprovado ao modelo junto com os problemas achados."""
+    return (
+        "O trecho acima foi REPROVADO e sera descartado. Problemas: "
+        + "; ".join(problemas)
+        + ". Reescreva o trecho inteiro, do zero, cobrindo as mesmas noticias: escreva "
+        "SOMENTE em portugues do Brasil, traduzindo o sentido do material em ingles (nunca "
+        "copie frases em ingles, nem responda em ingles), e sem despedida se este nao for o "
+        "ultimo trecho do roteiro."
+    )
+
+
+def _chamar_ollama(mensagens: list[dict]) -> str:
+    """Envia as mensagens ao Ollama e devolve o texto gerado.
+
+    Args:
+        mensagens: turnos da conversa (role/content), sem o prompt de sistema, que e
+            acrescentado aqui.
 
     Raises:
         RuntimeError: se o Ollama estiver inacessivel ou responder em formato inesperado.
     """
     payload = {
         "model": MODELO,
-        "messages": [
-            {"role": "system", "content": PROMPT_SISTEMA},
-            {"role": "user", "content": mensagem_usuario},
-        ],
+        "messages": [{"role": "system", "content": PROMPT_SISTEMA}, *mensagens],
         "stream": False,
         "options": {
             "temperature": TEMPERATURA,
@@ -199,12 +336,63 @@ def _chamar_ollama(mensagem_usuario: str) -> str:
     return texto
 
 
+def _gerar_trecho(noticias: list[dict], indice: int, total: int) -> str:
+    """Gera o trecho de um lote, revisando o idioma e reenviando ao modelo se preciso.
+
+    O material de origem esta em ingles e o modelo de 3B as vezes responde no idioma da
+    entrada (na edicao id=10 o segundo lote saiu inteiro em ingles). Cada resposta passa por
+    `_revisar_trecho`; se houver problema, o proprio texto reprovado volta como turno do
+    assistente seguido da correcao pedida, por ate TENTATIVAS_POR_TRECHO tentativas.
+
+    Args:
+        noticias: noticias do lote.
+        indice: posicao do lote (1-based).
+        total: quantidade total de lotes.
+
+    Returns:
+        Trecho do roteiro aprovado na revisao.
+
+    Raises:
+        RuntimeError: se o trecho continuar em ingles apos todas as tentativas.
+    """
+    ultimo = indice == total
+    mensagens = [{"role": "user", "content": _montar_prompt_lote(noticias, indice, total)}]
+    texto = ""
+
+    for tentativa in range(1, TENTATIVAS_POR_TRECHO + 1):
+        if tentativa > 1:
+            print(f"    tentativa {tentativa}/{TENTATIVAS_POR_TRECHO} do trecho {indice}...")
+        texto = _chamar_ollama(mensagens)
+        problemas = _revisar_trecho(texto, ultimo=ultimo)
+        if not problemas:
+            return texto
+        print(f"    [aviso] trecho {indice} reprovado: {'; '.join(problemas)}")
+        print(f"    trecho reprovado: {texto[:160]}...")
+        mensagens.append({"role": "assistant", "content": texto})
+        mensagens.append({"role": "user", "content": _instrucao_corretiva(problemas)})
+
+    if not parece_portugues(texto):
+        raise RuntimeError(
+            f"o trecho {indice} continuou em ingles apos {TENTATIVAS_POR_TRECHO} tentativas "
+            "(o material-fonte em ingles empurra o modelo de 3B para o idioma de entrada). "
+            "Nenhum audio foi gravado: rode o pipeline de novo para sortear outra geracao."
+        )
+
+    print(
+        f"    [aviso] trecho {indice} mantido com despedida fora do ultimo trecho "
+        "(problema leve: melhor manter a noticia do que descartar o trecho)."
+    )
+    return texto
+
+
 def gerar_boletim(noticias: list[dict]) -> str:
     """Gera o roteiro do boletim em pt-BR a partir das noticias coletadas.
 
     As noticias sao enviadas ao LLM em lotes de TAMANHO_LOTE e os trechos gerados sao
     concatenados na ordem (a abertura fica no primeiro lote e a conclusao no ultimo).
     Enviar a lista inteira de uma vez fazia o modelo de 3B resumir/omitir noticias.
+    Cada trecho passa pela revisao de idioma/despedida de `_gerar_trecho` antes de entrar
+    no roteiro.
 
     Args:
         noticias: lista de dicts normalizados pelo coletor (fonte, titulo, url,
@@ -227,7 +415,7 @@ def gerar_boletim(noticias: list[dict]) -> str:
 
     for indice, lote in enumerate(lotes, start=1):
         print(f"  lote {indice}/{len(lotes)} ({len(lote)} noticia(s))...")
-        trechos.append(_chamar_ollama(_montar_prompt_lote(lote, indice, len(lotes))))
+        trechos.append(_gerar_trecho(lote, indice, len(lotes)))
 
     return "\n\n".join(trechos)
 

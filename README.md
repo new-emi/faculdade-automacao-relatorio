@@ -73,7 +73,8 @@ faculdade-automacao-relatorio/
 ├── scripts/
 │   ├── download_kokoro.py      # Baixa os modelos do Kokoro para models/ (retomável)
 │   ├── smoke_kokoro.py         # Smoke test do TTS: gera audio/smoke.wav
-│   └── md_para_pdf.py          # Converte os documentos de docs/ em HTML (para gerar PDF)
+│   ├── md_para_pdf.py          # Converte os documentos de docs/ em HTML (para gerar PDF)
+│   └── verifica_idioma.py      # Confere a revisão de idioma/despedida dos trechos (sem rede)
 ├── audio/                      # Saída de áudio (boletim_<data>.wav; smoke.wav versionado)
 ├── output/                     # Saídas de texto dos testes (ex.: boletim_texto.md)
 └── models/                     # Modelos Kokoro (fora do git; reconstruir pelo script)
@@ -200,6 +201,7 @@ Cada módulo tem um bloco de teste no `__main__`, sempre a partir da raiz do pro
 python src/coletor.py    # coleta (dias=3, max_por_fonte=5) e mostra as notícias
 python src/boletim.py    # coleta (dias=2, max_por_fonte=3), gera o roteiro e salva em output/boletim_texto.md
 python src/audio.py      # coleta, gera roteiro e sintetiza audio/boletim_completo.wav
+python scripts/verifica_idioma.py   # revisa o idioma dos roteiros já gravados (sem Ollama/rede)
 ```
 
 ## 7. Decisões técnicas justificadas
@@ -263,6 +265,23 @@ python src/audio.py      # coleta, gera roteiro e sintetiza audio/boletim_comple
   ainda a regra de idioma único (só português, só caracteres latinos, sem colchetes). Risco
   residual: uma frase isolada que ainda repita é mantida e reportada no console (`[aviso]`), para
   não perder a notícia do roteiro.
+- **Revisão de idioma e de despedida do roteiro.** A edição de 21/09 (`id=10`) saiu com o áudio
+  **começando em português e terminando em inglês**: o segundo lote de notícias foi gerado
+  inteiramente em inglês, porque as notícias-fonte são em inglês e, por decisão da tarefa 15, o
+  texto do trecho anterior **não** é repassado ao lote seguinte — o modelo de 3B ficou sem âncora
+  de idioma e respondeu no idioma da entrada. O primeiro lote ainda escreveu uma **despedida no
+  meio do roteiro** ("E pronto! ... Até lá, boa sorte e bom trabalho!"), embora a conclusão esteja
+  reservada ao último trecho. Três medidas em `src/boletim.py`: o `PROMPT_SISTEMA` passou a dizer
+  que **o material recebido é em inglês** e que a resposta é em português (traduzir o sentido,
+  nunca copiar frases em inglês); a regra de idioma é **repetida no fim do prompt de cada lote**
+  (num modelo de 3B a última instrução lida é a que mais pesa); e `_gerar_trecho` revisa cada
+  trecho com `parece_portugues` (marcadores funcionais de português x inglês) e `_tem_despedida`,
+  **reenviando o próprio trecho reprovado** ao modelo seguido da correção pedida, por até
+  `TENTATIVAS_POR_TRECHO = 2` tentativas. Se o inglês persistir, o pipeline **falha com
+  `RuntimeError`** em vez de gravar um áudio em inglês. A heurística foi conferida nos **107
+  parágrafos de todos os roteiros do banco**: 7 reprovações, todas legítimas (6 parágrafos em
+  inglês e 1 despedida fora do último trecho) — **zero falso positivo**. Reproduzível com
+  `python scripts/verifica_idioma.py`, que não usa Ollama nem rede.
 
 ## 8. Evidências de funcionamento
 
@@ -312,7 +331,7 @@ Saída obtida:
 | Chunks de TTS | 9 |
 | Registro no banco | `id=4` em `boletim.db` |
 
-Os áudios das execuções anteriores foram **descartados** para manter o diretório limpo: no disco ficam apenas o WAV da edição de 17/09 (`audio/boletim_2026-09-17.wav`) e o da edição de 21/09 (`audio/boletim_2026-09-21.wav`); todas as execuções continuam registradas no `boletim.db`.
+Os áudios das execuções anteriores foram **descartados** para manter o diretório limpo: no disco ficam três WAVs — o da edição de 17/09 (`audio/boletim_2026-09-17.wav`, 6.668.230 B), o da última edição de 21/09 (`audio/boletim_2026-09-21.wav`, 4.743.912 B) e a cópia preservada da edição de 21/09 que saiu com o idioma misturado (`audio/boletim_2026-09-21_idioma_misto.wav`, 6.916.266 B, ver 8.3); todas as execuções continuam registradas no `boletim.db`.
 
 ### 8.2 Edição de 21/09/2026 (id=8) — correção de loop no TTS
 
@@ -340,7 +359,7 @@ regerada:
 | Verificação de loop | auto-similaridade máxima 0,80 (limite 0,90) — **sem loop** |
 | Registro no banco | `id=8` em `boletim.db` |
 
-Consulta real ao banco, com as **oito** execuções registradas:
+Consulta real ao banco, com as **onze** execuções registradas:
 
 ```powershell
 python -c "import sqlite3;[print(r[0],r[1],r[2],r[3],round(r[4],2)) for r in sqlite3.connect('boletim.db').execute('SELECT id,data_geracao,qtd_noticias,caminho_audio,duracao_audio_segundos FROM boletins')]"
@@ -357,6 +376,29 @@ Saída obtida:
 6 2026-09-21 20:08:35 10 audio/boletim_2026-09-21.wav 148.82
 7 2026-09-21 20:24:52 10 audio/boletim_2026-09-21.wav 93.36
 8 2026-09-21 20:31:49 10 audio/boletim_2026-09-21.wav 138.89
+9 2026-09-21 21:01:15 10 audio/boletim_2026-09-21.wav 141.81
+10 2026-09-21 21:24:28 10 audio/boletim_2026-09-21.wav 144.09
+11 2026-09-21 21:38:20 10 audio/boletim_2026-09-21.wav 98.83
+```
+
+| Métrica | Valor |
+|---------|-------|
+| Data/hora da execução | 2026-09-21 21:38:20 |
+| Notícias coletadas | 10 (5 HN + 5 Reddit) |
+| Roteiro gerado | 1.659 caracteres |
+| Marcadores de idioma do roteiro | 58 de português, **0** de inglês |
+| Arquivo de áudio | `audio/boletim_2026-09-21.wav` |
+| Tamanho do áudio | 4.743.912 B |
+| Amostras | 2.371.934 |
+| Taxa de amostragem | 24000 Hz |
+| Formato | PCM_16 |
+| Duração | 98,83 s |
+| Chunks de TTS | 5 |
+| Verificação de loop | auto-similaridade máxima 0,78 (limite 0,90) — **sem loop** |
+| Registro no banco | `id=11` em `boletim.db` |
+
+```powershell
+python scripts/verifica_idioma.py
 ```
 
 ## 9. Roadmap
