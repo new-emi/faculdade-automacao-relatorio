@@ -2,8 +2,7 @@
 
 **Disciplina:** AI Factory — Etapa 1
 **Entrega:** Critério 1 (ID 1.1)
-**Autoria:** Emily Cristofoleti (individual)
-**Data:** 17/09/2026
+**Autoria:** Emily Cristofoleti 
 
 ---
 
@@ -65,7 +64,7 @@ Automação **Boletim IA**, implementada como pipeline Python de quatro etapas o
 - **Consumo assíncrono**: o boletim em áudio pode ser ouvido em deslocamento e em tarefas paralelas, deixando de competir com o tempo de estudo.
 - **Custo zero de operação**: 100% local e offline após o download dos modelos — sem chaves de API, sem nuvem, sem assinatura.
 - **Histórico auditável**: cada edição fica persistida e consultável por data.
-- **Reaproveitamento**: o pipeline é modular e extensível (roadmap: orquestração em n8n, enriquecimento por scraping, aumento do tamanho do modelo).
+- **Reaproveitamento**: o pipeline é modular e extensível (roadmap: enriquecimento por scraping, aumento do tamanho do modelo).
 
 ## 8. Verificação da oportunidade (critério de sucesso)
 

@@ -55,26 +55,6 @@ flowchart TD
     K -.-> I
 ```
 
-Em texto:
-
-```
-HN Algolia + Reddit RSS (Atom)
-        |
-        v
-   src/coletor.py                 (Input: coleta e normaliza)
-        |
-        v
-   src/boletim.py  <--  Ollama qwen2.5:3b   (Process: roteiro pt-BR)
-        |
-        v
-   src/audio.py    <--  Kokoro ONNX (voz pf_dora)   (Output: narracao)
-        |
-        +--> audio/boletim_<data>.wav
-        +--> boletim.db (tabela boletins)
-
-   tudo orquestrado por main.py
-```
-
 ## 4. Estrutura do repositório
 
 ```
@@ -272,6 +252,17 @@ python src/audio.py      # coleta, gera roteiro e sintetiza audio/boletim_comple
   escolhido por medição. O texto já gerado **não** é repassado ao lote seguinte: isso fazia o
   modelo repetir as últimas palavras do trecho anterior (`id=5` emendou "Hey pessoal," no meio
   do roteiro).
+- **Texto saneado e verificação de loop no TTS.** O Kokoro entra em **loop** (repete a mesma
+  frase várias vezes no áudio) quando o espeak-ng não consegue fonemizar bem a entrada — foi o
+  que aconteceu na edição de 21/09, em que o LLM misturou **caracteres chineses** e marcadores
+  literais como `[link]` no roteiro. Duas proteções foram adicionadas em `src/audio.py`:
+  `_sanitizar_para_tts` limpa o texto antes do TTS (remove URLs, marcadores entre colchetes e
+  qualquer caractere fora do alfabeto latino; expande `%`, `$`, `&` e `@` para palavras; garante
+  pontuação final) e `_sintetizar_trecho` mede a auto-similaridade do espectro de cada trecho
+  (`_repeticao`) e, ao detectar loop, re-sintetiza o trecho **frase por frase**. O prompt ganhou
+  ainda a regra de idioma único (só português, só caracteres latinos, sem colchetes). Risco
+  residual: uma frase isolada que ainda repita é mantida e reportada no console (`[aviso]`), para
+  não perder a notícia do roteiro.
 
 ## 8. Evidências de funcionamento
 
@@ -307,29 +298,12 @@ Saída obtida:
 (2, '2026-09-17 04:15:57', 20, 'audio/boletim_2026-09-17.wav', 121.07066666666667)
 ```
 
-### 8.2 Ajustes feitos ouvindo o áudio e edição final (id=4)
-
-Os números de 8.1 são da primeira execução; as execuções seguintes existem para corrigir
-problemas encontrados **ouvindo o áudio**, e cada passo foi medido, não estimado:
-
-1. **Repetição (id=2).** O prompt pedia blocos temáticos e o modelo de 3B reciclava itens para
-   preenchê-los ("Compute:Arena" 3 vezes, "Axiom" 2 vezes). A lista de entrada daquela execução
-   foi verificada: **sem duplicatas** — o problema estava no LLM, não na coleta.
-2. **Correção da repetição (id=3).** Roteiro linear, menção única, proibição de citar
-   fonte/URL/data e `repeat_penalty`. Efeito colateral medido: com **20 notícias** o modelo passou
-   a resumir e omitir (roteiro de 1.440 caracteres cobrindo ~10 de 20), e a edição foi limitada a
-   ~10 notícias (`MAX_POR_FONTE = 5`).
-3. **Cobertura (id=4).** Ainda com 10 notícias numa única chamada o modelo omitia itens (o
-   roteiro de 83,48 s da `id=3` cobriu 6 de 10). A geração passou a ser feita **em lotes de 5
-   notícias** (`TAMANHO_LOTE = 5`), com abertura no primeiro trecho e conclusão no último.
-   Resultado medido na edição do dia: **10 de 10 notícias cobertas e nenhuma repetida**.
-
 | Métrica | Valor |
 |---------|-------|
 | Data/hora da execução | 2026-09-17 05:02:04 |
 | Notícias coletadas | 10 (5 HN + 5 Reddit) |
 | Roteiro gerado | 2.266 caracteres |
-| Arquivo de áudio | `audio/boletim_2026-09-17.wav` (cópia de segurança: `audio/boletim_2026-09-17_edicao_final.wav`) |
+| Arquivo de áudio | `audio/boletim_2026-09-17.wav` |
 | Tamanho do áudio | 6.668.230 B |
 | Amostras | 3.334.093 |
 | Taxa de amostragem | 24000 Hz |
@@ -338,9 +312,35 @@ problemas encontrados **ouvindo o áudio**, e cada passo foi medido, não estima
 | Chunks de TTS | 9 |
 | Registro no banco | `id=4` em `boletim.db` |
 
-Os áudios das execuções anteriores foram **descartados** para manter o diretório limpo (id=1 a id=3 e a execução de teste id=5, cujo áudio emendava uma saudação no meio do roteiro — o código foi corrigido depois disso): no disco fica apenas o WAV da edição final, `audio/boletim_2026-09-17.wav`, e as cinco execuções continuam registradas no `boletim.db`.
+Os áudios das execuções anteriores foram **descartados** para manter o diretório limpo: no disco ficam apenas o WAV da edição de 17/09 (`audio/boletim_2026-09-17.wav`) e o da edição de 21/09 (`audio/boletim_2026-09-21.wav`); todas as execuções continuam registradas no `boletim.db`.
 
-Consulta real ao banco, com as **cinco** execuções registradas:
+### 8.2 Edição de 21/09/2026 (id=8) — correção de loop no TTS
+
+A edição de 21/09 saiu com a narradora **repetindo a mesma frase várias vezes** em um trecho. O
+roteiro gravado no banco mostrou a causa: o LLM misturou **caracteres chineses** e marcadores
+literais como `[link]` no texto, e o espeak-ng/Kokoro entra em **loop** com esse tipo de entrada.
+Medição no trecho culpado: **35,42 s** de áudio com auto-similaridade **0,94** (loop); depois do
+saneamento: **21,11 s** com **0,82** (sem loop). A correção tem duas partes: `_sanitizar_para_tts`
+(limpa URLs, colchetes, símbolos soltos e caracteres fora do alfabeto latino) e `_repeticao` +
+`_sintetizar_trecho` (mede a auto-similaridade do espectro de cada trecho e, ao detectar loop,
+re-sintetiza o trecho frase por frase); o prompt também ganhou a regra de idioma único. Edição
+regerada:
+
+| Métrica | Valor |
+|---------|-------|
+| Data/hora da execução | 2026-09-21 20:31:49 |
+| Notícias coletadas | 10 (5 HN + 5 Reddit) |
+| Roteiro gerado | 2.349 caracteres |
+| Arquivo de áudio | `audio/boletim_2026-09-21.wav` |
+| Tamanho do áudio | 6.666.666 B |
+| Amostras | 3.333.311 |
+| Taxa de amostragem | 24000 Hz |
+| Formato | PCM_16 |
+| Duração | 138,89 s |
+| Verificação de loop | auto-similaridade máxima 0,80 (limite 0,90) — **sem loop** |
+| Registro no banco | `id=8` em `boletim.db` |
+
+Consulta real ao banco, com as **oito** execuções registradas:
 
 ```powershell
 python -c "import sqlite3;[print(r[0],r[1],r[2],r[3],round(r[4],2)) for r in sqlite3.connect('boletim.db').execute('SELECT id,data_geracao,qtd_noticias,caminho_audio,duracao_audio_segundos FROM boletins')]"
@@ -354,37 +354,13 @@ Saída obtida:
 3 2026-09-17 04:48:57 10 audio/boletim_2026-09-17.wav 83.48
 4 2026-09-17 05:02:04 10 audio/boletim_2026-09-17.wav 138.92
 5 2026-09-17 05:06:00 10 audio/boletim_2026-09-17.wav 93.11
+6 2026-09-21 20:08:35 10 audio/boletim_2026-09-21.wav 148.82
+7 2026-09-21 20:24:52 10 audio/boletim_2026-09-21.wav 93.36
+8 2026-09-21 20:31:49 10 audio/boletim_2026-09-21.wav 138.89
 ```
 
-## 9. Limitações conhecidas
+## 9. Roadmap
 
-- **Risco residual de imprecisão no HN.** O modelo de 3B ainda pode extrapolar detalhes em
-  títulos curtos do HN que chegam **sem `texto_base`** (ex.: descrever um modelo como "aberto"
-  ou atribuí-lo a uma empresa que não está no título). O risco se concentra nos itens do HN,
-  foi medido e é **aceito e documentado** — a mitigação atual é a regra anti-alucinação do
-  prompt, não uma garantia.
-- **Reddit anônimo limitado.** ~1 requisição/min por IP nesta rede (HTTP 429 se exceder) e a
-  rota Atom **não expõe score** — nesses itens o campo `score` fica 0, então o ranking dos
-  posts do Reddit é neutro.
-- **Sem scraping.** O LLM só vê título, URL e um texto curto (`texto_base` truncado em ~500
-  caracteres). A profundidade do roteiro fica limitada ao que a fonte publica.
-- **Nome do áudio por data.** Rodar o pipeline mais de uma vez no mesmo dia substitui o WAV
-  anterior (o histórico no banco preserva todas as execuções, um registro por linha; no disco
-  fica apenas a última edição).
-- **Repetição resolvida; cobertura agora é estrutural, com ressalvas medidas.** A repetição de
-  notícias no roteiro foi resolvida na task 13 (formato linear, menção única, proibição de citar
-  fonte/URL/data e `repeat_penalty=1.2` / `repeat_last_n=1024`). O efeito colateral medido foi a
-  **omissão** (com 20 notícias o 3B resumia e deixava itens de fora; com 10 numa única chamada,
-  cobriu 6 de 10) e a mitigação adotada foi a **geração em lotes de 5 notícias**, que elevou a
-  cobertura da edição final para **10 de 10**. Ainda assim: (a) a aderência não é garantida em
-  roteiros maiores — a mitigação é reduzir o número de itens por lote ou aumentar o modelo; e (b)
-  a costura entre os lotes pode produzir transições secas (a passagem do trecho anterior ao lote
-  seguinte foi removida justamente por causar eco do texto já dito).
-
-## 10. Roadmap
-
-- **Orquestração em n8n** — agendar a execução diária, tratar retentativas e notificar
-  quando o boletim do dia estiver pronto.
 - **Enriquecimento por scraping das URLs originais** — extrair o texto das matérias para
   reduzir a dependência de títulos curtos e melhorar a precisão do roteiro.
 - **Upgrade para modelo 7B+** — mais aderência ao material de origem e menor risco residual

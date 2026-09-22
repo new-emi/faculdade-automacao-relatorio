@@ -2,8 +2,7 @@
 
 **Disciplina:** AI Factory — Etapa 1
 **Entrega:** Critério 2 (ID 2)
-**Autoria:** Emily Cristofoleti (individual)
-**Data:** 17/09/2026
+**Autoria:** Emily Cristofoleti 
 
 ---
 
@@ -15,7 +14,6 @@
 | Problema endereçado | Curadoria manual, descentralizada e sem histórico das notícias de IA |
 | Equipe | Individual |
 | Papel | Emily Cristofoleti — escopo, decisões técnicas, validação e documentação |
-| Prazo da entrega | 17/09/2026 (Etapa 1) |
 | Custo de infraestrutura | Zero (sem chave de API, tudo local) |
 
 ## 2. Objetivos (SMART)
@@ -33,7 +31,7 @@
 
 **Dentro do escopo:** coleta em fontes públicas sem chave, curadoria/resumo por LLM local, síntese de voz local, persistência em banco simples, orquestração em um comando e documentação.
 
-**Fora do escopo (roadmap):** orquestração em n8n, scraping das URLs originais, upgrade para modelo 7B+, publicação como podcast/feed e interface web.
+**Fora do escopo (roadmap):** scraping das URLs originais, upgrade para modelo 7B+, publicação como podcast/feed e interface web.
 
 **Premissas:** máquina com Windows, Python 3.11 e Ollama em execução; download prévio dos modelos de voz (~354 MB).
 
@@ -41,13 +39,12 @@
 
 | Etapa | Entregável | Evidência |
 |---|---|---|
-| S0 | `CONTEXTO.md` com propósito, ambiente, regras, estado e fila | Arquivo versionado na raiz |
 | S1 | Ambiente de áudio pronto: ffmpeg, `soundfile`, modelos Kokoro e smoke test de TTS pt-BR | `audio/smoke.wav` (3,69 s, RMS 0,055), `scripts/download_kokoro.py`, `scripts/smoke_kokoro.py` |
 | S2 | Módulo de coleta (HN + Reddit) | `src/coletor.py`, commit `8928cb1` |
 | S3 | Módulo de curadoria/resumo via Ollama | `src/boletim.py`, commit `45f3603` |
 | S4 | Regra anti-alucinação no prompt + módulo de síntese de voz | `src/boletim.py`, `src/audio.py`, commit `05a427d` |
 | S5 | Registro em SQLite + orquestrador de ponta a ponta + execução E2E | `src/registro.py`, `main.py`, `boletim.db`, commit `a9636ab` |
-| S6 | Higiene do repositório (binários fora do versionamento) + README final | `.gitignore`, `README.md`, commit `e0d8154` |
+| S6 | Higiene do repositório (binários fora do versionamento) | `.gitignore`, commit `e0d8154` |
 | S7 | `requirements.txt` com versões fixadas + documentos de entrega (diagnóstico ID 1.1 e Canvas ID 2) | `requirements.txt`, `docs/01_diagnostico_id1_1.*`, `docs/02_canvas_id2.*`, commits `a22dc11` e `033daf7` |
 | S8 | Remoção do caminho morto da coleta do Reddit (a rota JSON responde 403 em todas as execuções) | `src/coletor.py`, commit `0c76634` |
 | S9 | Regularização das evidências E2E na documentação (duas execuções registradas, áudio da primeira preservado) | `README.md`, `docs/01`, `docs/02`, commit `a0db252` |
@@ -101,14 +98,13 @@ O uso de assistentes de IA é declarado de forma transparente: as decisões, a v
 
 | Ordem | Sessão | Foco | Commit |
 |---|---|---|---|
-| 1 | S0 | Contexto e regras do projeto | (arquivo versionado em S1) |
-| 2 | S1 | Ambiente de áudio e modelos de voz | `a67819e` |
-| 3 | S2 | Coleta de notícias | `8928cb1` |
-| 4 | S3 | Curadoria/resumo via LLM | `45f3603` |
-| 5 | S4 | Anti-alucinação + síntese de voz | `05a427d` |
-| 6 | S5 | Banco SQLite + orquestrador + teste E2E | `a9636ab` |
-| 7 | S6 | Higiene do repositório + README | `e0d8154` |
-| 8 | S7 | `requirements.txt` + documentos de entrega | `a22dc11`, `033daf7` |
-| 9 | S8 | Remoção do código morto (rota JSON do Reddit) | `0c76634` |
-| 10 | S9 | Regularização das evidências E2E na documentação | `a0db252` |
-| 11 | S10 | Correção do tamanho do banco na documentação | `fe05247` |
+| 1 | S1 | Ambiente de áudio e modelos de voz | `a67819e` |
+| 2 | S2 | Coleta de notícias | `8928cb1` |
+| 3 | S3 | Curadoria/resumo via LLM | `45f3603` |
+| 4 | S4 | Anti-alucinação + síntese de voz | `05a427d` |
+| 5 | S5 | Banco SQLite + orquestrador + teste E2E | `a9636ab` |
+| 6 | S6 | Higiene do repositório| `e0d8154` |
+| 7 | S7 | `requirements.txt` + documentos de entrega | `a22dc11`, `033daf7` |
+| 8 | S8 | Remoção do código morto (rota JSON do Reddit) | `0c76634` |
+| 9 | S9 | Regularização das evidências E2E na documentação | `a0db252` |
+| 10 | S10 | Correção do tamanho do banco na documentação | `fe05247` |
