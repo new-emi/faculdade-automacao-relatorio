@@ -35,7 +35,7 @@ from src.registro import inicializar_banco, registrar_boletim
 DIAS = 1
 # 5 por fonte = ate 10 noticias por edicao; com 20 o modelo de 3B passou a omitir itens
 # (ver README, limitacoes)
-MAX_POR_FONTE = 5
+MAX_POR_FONTE = 4
 CAMINHO_DB = "boletim.db"
 PASTA_AUDIO = Path("audio")
 
