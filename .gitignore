@@ -3,6 +3,8 @@
 
 # Audios grandes do boletim (o smoke.wav continua versionado de proposito).
 audio/boletim_*.wav
+# Evidencias da documentacao (protegidas da politica de retencao, mas grandes demais para o git).
+audio/evidencias/
 
 # Saidas geradas pelos testes (texto do boletim etc.).
 output/

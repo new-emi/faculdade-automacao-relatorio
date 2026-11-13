@@ -4,7 +4,15 @@ Pipeline de automação que **coleta notícias de Inteligência Artificial, escr
 em pt-BR com um LLM local e entrega o resultado em áudio**, registrando cada execução num
 banco SQLite.
 
-Entrega da disciplina **AI Factory — Etapa 1** (IDs 1.1, 2, 2.1 e 2.2).
+Entrega da disciplina **AI Factory** (PUCPR): Etapa 1 (IDs 1.1, 2, 2.1 e 2.2), Etapa 2
+(microsserviço e orquestração no n8n) e etapa final (métricas, dashboard e ética).
+
+| Entrega | Onde está |
+|---|---|
+| Dashboard de métricas (ID 3.1) | <https://new-emi.github.io/faculdade-automacao-relatorio/dashboard/> |
+| Métricas, análise de performance e ROI | Seção 10 |
+| Ética, LGPD e IA responsável (ID 3.2) | Seção 11 e [`docs/03_etica_lgpd.md`](docs/03_etica_lgpd.md) |
+| Microsserviço e orquestração (Etapa 2) | Seção 9 |
 
 ## 1. Visão geral
 
@@ -34,7 +42,8 @@ resumo aproveitável.
    tema e escreve um roteiro fluido em pt-BR (nada é enviado para serviços externos).
 3. **Síntese de voz** — o roteiro vira áudio narrado em português, offline.
 4. **Registro em banco** — os metadados da execução são gravados em SQLite, criando o
-   histórico dos boletins gerados.
+   histórico dos boletins gerados. Uma segunda tabela, `execucoes`, registra também as
+   tentativas que falharam (etapa e motivo).
 
 ## 3. Diagrama do pipeline
 
@@ -60,22 +69,28 @@ flowchart TD
 ```
 faculdade-automacao-relatorio/
 ├── main.py                     # Orquestrador: encadeia as 4 etapas do pipeline
+├── servidor.py                 # Microsserviço HTTP (Etapa 2): /saude, /gerar, /audio + fila + métricas
 ├── CONTEXTO.md                 # Diário técnico do projeto (estado, log de tarefas, fila)
 ├── README.md                   # Este arquivo
 ├── requirements.txt            # Dependências com versões fixadas (pip install -r)
 ├── .gitignore                  # Exclui modelos, banco, áudios de boletim e output/
-├── docs/                       # Documentos de entrega: diagnóstico (ID 1.1) e Canvas (ID 2)
+├── docs/                       # Documentos de entrega: diagnóstico (ID 1.1), Canvas (ID 2) e ética/LGPD (ID 3.2)
+│   └── dashboard/              # Dashboard de métricas (ID 3.1), publicado pelo GitHub Pages
 ├── src/
 │   ├── coletor.py              # Input: HN Algolia + Reddit (feed RSS Atom)
 │   ├── boletim.py              # Process: roteiro pt-BR via Ollama /api/chat
 │   ├── audio.py                # Output: TTS Kokoro ONNX -> WAV PCM_16 24 kHz
-│   └── registro.py             # Persistência: tabela `boletins` em SQLite (stdlib)
+│   ├── registro.py             # Persistência: tabelas `boletins` e `execucoes` em SQLite (stdlib)
+│   └── retencao.py             # Política de retenção: áudios 30 dias, roteiros 12 meses (LGPD)
 ├── scripts/
 │   ├── download_kokoro.py      # Baixa os modelos do Kokoro para models/ (retomável)
 │   ├── smoke_kokoro.py         # Smoke test do TTS: gera audio/smoke.wav
 │   ├── md_para_pdf.py          # Converte os documentos de docs/ em HTML (para gerar PDF)
-│   └── verifica_idioma.py      # Confere a revisão de idioma/despedida dos trechos (sem rede)
+│   ├── verifica_idioma.py      # Confere a revisão de idioma/despedida dos trechos (sem rede)
+│   ├── metricas.py             # Lê o boletim.db e gera os dados do dashboard
+│   └── experimento_tts.py      # Experimento controlado: re-sintetiza roteiros e mede o RTF
 ├── audio/                      # Saída de áudio (boletim_<data>.wav; smoke.wav versionado)
+│   └── evidencias/             # Áudios citados na documentação, fora da retenção e do git
 ├── output/                     # Saídas de texto dos testes (ex.: boletim_texto.md)
 └── models/                     # Modelos Kokoro (fora do git; reconstruir pelo script)
 ```
@@ -85,8 +100,9 @@ artefatos gerados em tempo de execução e reconstruíveis. O `audio/smoke.wav` 
 repositório de propósito, como evidência pequena do funcionamento do TTS.
 
 Em `docs/` ficam os documentos de entrega, em Markdown (fonte) e PDF:
-`01_diagnostico_id1_1.md` (diagnóstico da necessidade — Critério 1 / ID 1.1) e
-`02_canvas_id2.md` (Canvas de planejamento — Critério 2 / ID 2). Depois de editar o Markdown,
+`01_diagnostico_id1_1.md` (diagnóstico da necessidade — Critério 1 / ID 1.1),
+`02_canvas_id2.md` (Canvas de planejamento — Critério 2 / ID 2) e `03_etica_lgpd.md`
+(impacto ético, LGPD e IA responsável — etapa final / ID 3.2). Depois de editar o Markdown,
 os PDFs são regerados assim:
 
 ```powershell
@@ -169,29 +185,54 @@ python main.py
 O orquestrador executa as **4 etapas** em sequência e imprime o progresso:
 
 1. **Coleta** — `coletar_noticias(dias=1, max_por_fonte=5)` busca até 5 itens por fonte
+   (o valor pode ser trocado pela variável de ambiente `BOLETIM_MAX_POR_FONTE`)
    (HN + Reddit), o que dá **~10 notícias por edição**. O limite é intencional: com 5 itens por
    fonte a lista já cobre o dia, e com 20 notícias o modelo de 3B passou a **omitir** itens do
-   roteiro (ver seção 9). Como o coletor deduplica entre fontes, a edição pode ter menos de
+   roteiro (ver seção 13). Como o coletor deduplica entre fontes, a edição pode ter menos de
    10 itens.
 2. **Roteiro** — `gerar_boletim(noticias)` envia as notícias ao Ollama em **lotes de 5**
    (`/api/chat`, `qwen2.5:3b`, `stream=False`, `temperature=0.6`) e concatena os trechos em pt-BR.
 3. **Áudio** — `sintetizar_audio(roteiro, "audio/boletim_<AAAA-MM-DD>.wav")` narra o roteiro
    com a voz `pf_dora`.
 4. **Registro** — a duração é medida com `soundfile` e o `registrar_boletim(...)` grava tudo
-   em `boletim.db`.
+   em `boletim.db`. A execução em si é auditada à parte: `iniciar_execucao(...)` abre uma
+   linha na tabela `execucoes` no começo e `concluir_execucao(...)` a fecha como `sucesso`;
+   se alguma etapa falhar, `registrar_falha(...)` a fecha como `falha` com a etapa e o
+   motivo.
+5. **Retenção** — depois do sucesso, `aplicar_retencao(...)` apaga os áudios com mais de 30
+   dias e os roteiros com mais de 12 meses (ver seção 11).
 
-**Saídas geradas:** `audio/boletim_<AAAA-MM-DD>.wav` e um novo registro na tabela
-`boletins` de `boletim.db`. Cada etapa tem `try/except` com mensagem clara; se não houver
-notícias, o programa avisa e encerra sem gerar boletim.
+**Saídas geradas:** `audio/boletim_<AAAA-MM-DD>.wav`, um novo registro na tabela
+`boletins` e a linha correspondente fechada na tabela `execucoes` de `boletim.db`. Cada
+etapa tem `try/except` com mensagem clara; se não houver notícias, o programa avisa e
+encerra sem gerar boletim. Toda falha é gravada em `execucoes` (ver 6.5 e 8.4); a única
+exceção é a falha ao abrir o próprio banco, que não tem onde ser registrada.
 
 ### 6.5 Consultar o histórico no SQLite
 
+O banco tem **duas tabelas separadas**: `boletins` (as edições geradas) e `execucoes`
+(a auditoria de cada tentativa, inclusive as que falharam).
+
 ```powershell
+# edições geradas com sucesso
 python -c "import sqlite3;print(*sqlite3.connect('boletim.db').execute('SELECT * FROM boletins').fetchall(), sep='\n')"
+
+# todas as tentativas, com status e motivo da falha
+python -c "import sqlite3;print(*sqlite3.connect('boletim.db').execute('SELECT id,data_inicio,data_fim,status,etapa,mensagem_erro FROM execucoes ORDER BY id').fetchall(), sep='\n')"
 ```
 
 Colunas da tabela `boletins`: `id`, `data_geracao`, `qtd_noticias`, `texto_boletim`,
 `caminho_audio`, `duracao_audio_segundos`.
+
+Colunas da tabela `execucoes`: `id`, `data_inicio`, `data_fim`, `status` (`em_andamento`,
+`sucesso` ou `falha`), `etapa` (etapa que interrompeu o pipeline: `coleta`, `roteiro`,
+`audio`, `leitura_wav` ou `registro`; vazia quando deu certo), `mensagem_erro`,
+`qtd_noticias` e `id_boletim` (aponta para a linha de `boletins` quando a execução terminou
+com sucesso).
+
+Uma execução interrompida de forma abrupta (Ctrl+C, queda de energia) fica com
+`status='em_andamento'` e `data_fim` vazio — sinal de que o processo não chegou a fechar a
+própria linha.
 
 ### 6.6 Rodar os módulos isoladamente
 
@@ -218,7 +259,7 @@ python scripts/verifica_idioma.py   # revisa o idioma dos roteiros já gravados 
   SQL para auditoria do histórico.
 - **Ausência de scraping das URLs originais.** O LLM recebe apenas o que o coletor entrega
   (fonte, título, URL e `texto_base`). Evita quebrar com HTML/anti-bot e mantém a coleta
-  previsível; a limitação correspondente está documentada na seção 9.
+  previsível; a limitação correspondente está documentada na seção 13.
 - **Kokoro ONNX local em vez de `edge-tts`.** O `edge-tts` depende do serviço do Edge
   (online). O Kokoro roda **offline**, sem serviço externo, sem credencial e sem custo por
   caractere — requisito de privacidade e previsibilidade para o projeto.
@@ -381,6 +422,11 @@ Saída obtida:
 11 2026-09-21 21:38:20 10 audio/boletim_2026-09-21.wav 98.83
 ```
 
+### 8.3 Edição de 21/09/2026 (id=11) — correção da deriva de idioma
+
+O áudio da execução anterior (id=10) começou em português e terminou em inglês; o
+diagnóstico e a correção estão na seção 7. Edição regerada:
+
 | Métrica | Valor |
 |---------|-------|
 | Data/hora da execução | 2026-09-21 21:38:20 |
@@ -401,9 +447,204 @@ Saída obtida:
 python scripts/verifica_idioma.py
 ```
 
-## 9. Roadmap
+### 8.4 Execuções que falharam
 
-- **Enriquecimento por scraping das URLs originais** — extrair o texto das matérias para
-  reduzir a dependência de títulos curtos e melhorar a precisão do roteiro.
+O `main.py` registra **toda tentativa** na tabela `execucoes`, separada de `boletins`, com
+data de início/fim, status, etapa que interrompeu o pipeline e a mensagem de erro. A
+consulta está na seção 6.5.
+
+O histórico anterior a essa mudança **não tem linhas** em `execucoes`: as execuções de
+17/09 e 21/09 já estavam em `boletins` quando a tabela foi criada, e as que abortaram
+deixaram rastro apenas no console. O diagnóstico delas está em texto nas seções 8.2 e 8.3 e
+no `CONTEXTO.md` (log de tarefas). O `boletim.db` existente não foi reescrito: a auditoria
+começa na próxima execução.
+
+Desde a etapa final, os áudios de 17/09 e 21/09 citados nesta seção ficam em
+`audio/evidencias/`, fora da política de retenção (seção 11) e fora do git.
+
+## 9. Etapa 2 — microsserviço e orquestração no n8n
+
+Na Etapa 2, o pipeline virou um **microsserviço HTTP local** (`servidor.py`, só biblioteca
+padrão) e passou a ser orquestrado pelo **n8n**, que entrega o boletim no **Telegram**.
+
+```mermaid
+flowchart LR
+    T1["Manual Trigger / Webhook / Schedule"] --> H1["HTTP Request<br/>GET /gerar"]
+    H1 --> IF{"ok?"}
+    IF -->|true| H2["HTTP Request<br/>GET /audio"]
+    H2 --> TG1["Telegram: áudio"]
+    TG1 --> TG2["Telegram: roteiro"]
+    IF -->|false| AV["Telegram: aviso de edição não gerada"]
+    H1 -. "crash, timeout, servidor fora" .-> EW["Error Workflow<br/>Telegram: alerta de falha"]
+    subgraph local["Máquina local"]
+      S["servidor.py :8787"] --> M["main.py"] --> O["Ollama + Kokoro"]
+    end
+    H1 --- S
+```
+
+| Rota | O que faz |
+|---|---|
+| `GET /saude` | Diz se o serviço está no ar e se o pipeline está ocupado |
+| `GET /gerar` | Roda o `main.py`, grava a requisição na tabela `requisicoes` e devolve um JSON com o roteiro, a duração do áudio e o tempo de cada etapa |
+| `GET /gerar?max_por_fonte=N` | O mesmo, com outra carga (usado no teste de carga) |
+| `GET /audio` | Serve o WAV do dia como binário, para o n8n baixar |
+
+**Tratamento de erros em duas camadas** (defesa em profundidade, a mesma filosofia da Etapa 1):
+
+- **Erro de negócio** (o pipeline respondeu, mas falhou, por exemplo com o Ollama desligado):
+  o `/gerar` responde `ok: false` com o motivo, o nó **IF** desvia para um aviso amigável no
+  Telegram e o fluxo termina sem alarme.
+- **Erro de infraestrutura** (o fluxo morre antes do IF: servidor fora do ar, timeout, queda
+  de rede): um **Error Workflow** separado, ligado nas configurações do fluxo principal,
+  manda um alerta de falha. Ele só dispara em execuções de produção (webhook ou agendamento).
+
+**Configuração sem segredos no código:** o token do bot fica no cofre de credenciais do n8n;
+a porta e o interpretador vêm de variáveis de ambiente (`BOLETIM_PORTA`, `BOLETIM_PYTHON`);
+o nó do Telegram tem **Retry On Fail** (3 tentativas, 5 s de intervalo).
+
+Para subir o serviço (com o Ollama aberto):
+
+```powershell
+$env:BOLETIM_PYTHON = "C:\caminho\para\Python311\python.exe"   # opcional: fixa o Python com os pacotes
+python servidor.py
+Invoke-RestMethod http://127.0.0.1:8787/saude
+```
+
+**Fila de um pedido por vez (etapa final).** O teste de stress da Etapa 2 mostrou que três
+disparos simultâneos disputam o mesmo LLM e estouram o timeout de 15 minutos. O
+`servidor.py` agora usa uma trava (`threading.Lock`): com o pipeline ocupado, o pedido
+recebe `status: "ocupado"` na hora, em vez de esperar até o timeout.
+
+## 10. Métricas de performance e ROI (etapa final)
+
+📊 **Dashboard:** <https://new-emi.github.io/faculdade-automacao-relatorio/dashboard/>
+(código em `docs/dashboard/`).
+
+### 10.1 Como as métricas foram coletadas
+
+O próprio sistema mede seu comportamento (**instrumentação**): o `main.py` imprime o tempo
+de cada etapa (`[tempo] roteiro 152.31`) e o `servidor.py` grava cada pedido na tabela
+`requisicoes` do `boletim.db`, com latência total, status (`sucesso`, `falha`, `timeout`
+ou `ocupado`), etapa da falha e tempo de cada etapa. O `scripts/metricas.py` lê o banco,
+calcula tudo e gera os dados do dashboard:
+
+```powershell
+python scripts/metricas.py
+```
+
+Amostra (10 a 12/11/2026, um notebook com 16 GB de RAM, Ollama `qwen2.5:3b`):
+
+| Recorte | Pedidos | Desenho |
+|---|---|---|
+| Amostra padrão | 13 | Carga de produção (10 notícias); 10 seguidos, 1 isolado em cada dia e 1 no teste de concorrência |
+| Teste de carga | 5 | 4, 8, 12, 16 e 20 notícias, com 5 min de pausa entre as rodadas |
+| Teste de concorrência | 3 | Três pedidos disparados no mesmo segundo |
+
+### 10.2 Resultados
+
+| Métrica | Valor |
+|---|---|
+| **Taxa de sucesso do pipeline** | **18 de 18 (100%)**; mais 2 pedidos recusados pela fila, como planejado |
+| Taxa de sucesso na fase de desenvolvimento (n8n, 18 e 19/10) | 8 de 23 (35%), incluindo 6 testes de stress feitos de propósito |
+| **Latência mediana** (10 notícias) | **253,8 s (4,2 min)**; de 178,2 s a 324,3 s; desvio-padrão de 39,8 s |
+| Coleta | 1,6 s (0,6% do tempo) |
+| Roteiro (LLM) | 83,4 s (31,8%) |
+| **Áudio (Kokoro)** | **177,4 s (67,6%)** — o gargalo |
+| Registro no SQLite | 0,02 s |
+| Teste de carga, 4 → 20 notícias | Roteiro de 68 s → 221 s (cerca de 11 s por notícia); pior total 531,6 s (16 notícias), todos abaixo do limite de 900 s |
+| Concorrência, 3 pedidos simultâneos | Antes (Etapa 2): 3 timeouts de 15 min, 0 boletins. Depois: 1 boletim em 324,3 s e 2 recusas instantâneas |
+
+Os tempos por etapa são medianas da amostra padrão. Os valores brutos estão na tabela do
+dashboard e no banco.
+
+### 10.3 Análise de performance
+
+**O gargalo é a síntese de voz, não o LLM.** A primeira execução medida sugeria o contrário
+(LLM com 64% do tempo). Com a amostra completa, o áudio ficou com 67,6%. Uma medição isolada
+engana; a amostra corrigiu a conclusão.
+
+**O tempo do áudio varia com o estado da máquina, não com o texto.** A medida usada é o
+**fator de tempo real (RTF)**: segundos de processamento por segundo de áudio. No notebook,
+o RTF oscilou entre 0,42 e 1,56. Para separar as causas, foi feito um **experimento
+controlado** (`scripts/experimento_tts.py`): os roteiros de 4 pedidos (2 rápidos e 2 lentos)
+foram sintetizados de novo pelo mesmo `src/audio.py` numa máquina estável. Os 4 levaram o
+mesmo tempo (RTF 0,67 a 0,68), e nenhum acionou a re-síntese por loop. Conclusão: a variação
+vem do ambiente do notebook. As hipóteses mais prováveis são aquecimento do processador
+(*thermal throttling*) e disputa com outros programas; memória cheia é pouco provável (havia
+cerca de 5 GB livres). Para apontar a causa exata, falta registrar CPU e temperatura (ver
+10.5).
+
+**Partida a frio do LLM.** Depois de 5 minutos parado, o Ollama descarrega o modelo da
+memória. No pedido feito com o notebook parado há mais de uma hora, o roteiro levou 172,7 s,
+contra a mediana de 83,4 s.
+
+**Escalabilidade.** O roteiro cresce de forma quase linear (lotes de 5 notícias com custo
+parecido). Até 20 notícias o sistema fica abaixo do limite de 15 minutos; com 60 notícias
+(teste da Etapa 2) ele estoura.
+
+### 10.4 ROI
+
+O ganho é medido em horas. Premissas declaradas: curadoria manual de 20 a 35 min por dia
+(estimativa da autora), 12 a 15 h investidas na construção (estimativa), 22 dias de uso por
+mês e 2,2 min de escuta por dia (mediana medida), contados como tempo gasto.
+
+| Cenário | Horas poupadas/mês | Payback | ROI em 12 meses | ROI com 1 h/mês de manutenção |
+|---|---|---|---|---|
+| Pessimista (20 min/dia, 15 h investidas) | 6,5 h | 2,3 meses | 422% | 342% |
+| Otimista (35 min/dia, 12 h investidas) | 12,0 h | 1,0 mês | 1.103% | 1.003% |
+
+ROI = (horas poupadas em 12 meses − horas investidas) ÷ horas investidas. O custo de
+operação é praticamente zero: sem API paga e sem nuvem, e cerca de 0,13 kWh de energia por
+mês (estimativa para um notebook de ~60 W). A conclusão se mantém mesmo com custo de
+manutenção (**análise de sensibilidade**).
+
+### 10.5 Propostas de melhoria
+
+| Evidência | Melhoria | Situação |
+|---|---|---|
+| 3 timeouts com pedidos simultâneos | Fila de um pedido por vez | ✅ Implementada |
+| Falhas sem rastro na Etapa 2 | Instrumentação: tabelas `requisicoes` e `execucoes` | ✅ Implementada |
+| Áudio = 67,6% do tempo | Rodar o Kokoro na GPU (`onnxruntime-directml` no Windows) | Proposta |
+| RTF de 0,42 a 1,56 no notebook x 0,67 a 0,68 na máquina estável | Registrar CPU, memória e temperatura por execução (`psutil`) | Proposta |
+| Roteiro de 172,7 s na partida a frio x 83,4 s de mediana | Manter o modelo carregado com `keep_alive` no Ollama | Proposta |
+| Variação causada por outros programas e aquecimento | Agendar a geração para horários com o notebook ocioso | Proposta |
+| Reddit encerra o RSS em 13/11/2026 | Substituir a fonte por outras com acesso oficial | Proposta (ver 11) |
+
+## 11. Ética, LGPD e IA responsável
+
+A análise completa está em [`docs/03_etica_lgpd.md`](docs/03_etica_lgpd.md): inventário dos
+dados, enquadramento na LGPD, 8 riscos com mitigação, IA responsável e implicações sociais.
+Os pontos principais:
+
+- **LGPD.** O uso atual é pessoal e não econômico, então a lei não se aplica (art. 4º, I).
+  Mesmo assim o projeto segue seus princípios, porque o código é público e pode ser reusado
+  num contexto em que ela se aplica.
+- **Retenção implementada** (`src/retencao.py`): áudios com mais de 30 dias e roteiros com
+  mais de 12 meses são apagados a cada execução bem-sucedida (princípio da necessidade e
+  art. 16). As métricas não têm dado pessoal e ficam. `python src/retencao.py` simula sem
+  apagar; os arquivos de `audio/evidencias/` ficam protegidos.
+- **Privacy by design.** Coleta sem autor, processamento local e token fora do código. A busca
+  `git log -S` confirmou que o token do bot nunca entrou num commit.
+- **Termos de uso.** O Reddit encerra o RSS em 13/11/2026 por causa de raspagem em massa. A
+  decisão do projeto é não contornar o bloqueio. O coletor já trata a falha, e o boletim
+  passa a usar só o Hacker News até a fonte ser substituída.
+
+## 12. Declaração de uso de IA
+
+Este projeto foi desenvolvido com apoio de assistentes de IA como par de programação:
+escrita de código sob direção, depuração e revisão. As decisões de escopo e de design, a
+execução dos testes, a validação dos resultados e a documentação são da autora. Cada
+mudança foi testada com execução real antes de ser aceita, e o histórico de commits
+registra a evolução do trabalho.
+
+## 13. Roadmap
+
+- **Substituir o Reddit** por fontes com acesso oficial e mais diversas, incluindo veículos
+  brasileiros.
+- **Enviar os links das notícias originais** junto com o áudio no Telegram, para o ouvinte
+  conferir os fatos.
+- **Kokoro na GPU**, **telemetria de CPU e temperatura** e **`keep_alive` no Ollama** (ver 10.5).
+- **Enriquecimento pelas URLs originais** — extrair o texto das matérias para reduzir a
+  dependência de títulos curtos, respeitando o `robots.txt` e os termos de cada site.
 - **Upgrade para modelo 7B+** — mais aderência ao material de origem e menor risco residual
   de extrapolação.

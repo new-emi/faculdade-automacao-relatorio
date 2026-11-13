@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Boletim IA em números</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Métricas medidas do Boletim IA: latência, taxa de sucesso, gargalos, testes de carga e concorrência e ROI.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600;700&display=swap">
+<style>
+/* Layout: uma coluna de leitura (720px) que abre para 1080px nos blocos de gráfico; capítulos na ordem da história. */
+:root {
+  --bg: #f6f7f8;            /* plano da página, neutro levemente frio */
+  --surface: #fcfcfb;       /* superfície dos gráficos */
+  --ink: #0b0b0b;
+  --ink-2: #52514e;
+  --muted: #7a7974;
+  --grid: #e1e0d9;
+  --axis: #c3c2b7;
+  --line: rgba(11,11,11,0.10);
+  --accent: #2a78d6;        /* LLM / roteiro (série 1) */
+  --audio: #eb6834;         /* áudio / TTS, o gargalo (série 2) */
+  --coleta: #1baf7a;        /* coleta (série 3) */
+  --deemph: #b9b8b0;
+  --good: #0ca30c;
+  --good-ink: #006300;
+  --critical: #d03b3b;
+  --font-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-data: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1011; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #95948d;
+    --grid: #2c2c2a; --axis: #383835; --line: rgba(255,255,255,0.10);
+    --accent: #3987e5; --audio: #d95926; --coleta: #199e70; --deemph: #5a5955;
+    --good: #0ca30c; --good-ink: #0ca30c; --critical: #e66767; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0f1011; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #95948d;
+  --grid: #2c2c2a; --axis: #383835; --line: rgba(255,255,255,0.10);
+  --accent: #3987e5; --audio: #d95926; --coleta: #199e70; --deemph: #5a5955;
+  --good: #0ca30c; --good-ink: #0ca30c; --critical: #e66767; color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--ink);
+  font: 400 16px/1.6 var(--font-body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 40px 64px;
+}
+.page { max-width: 1080px; margin: 0 auto; display: grid; gap: 56px; }
+.prose { max-width: 680px; }
+h1, h2, h3 { font-family: var(--font-display); text-wrap: balance; margin: 0; letter-spacing: -0.01em; }
+h1 { font-size: clamp(2rem, 5vw, 3.1rem); line-height: 1.05; font-weight: 700; }
+h2 { font-size: 1.55rem; line-height: 1.2; font-weight: 600; }
+h3 { font-size: 1rem; font-weight: 600; }
+p { margin: 0; }
+.eyebrow { font: 500 0.75rem/1 var(--font-data); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.lede { font-size: 1.15rem; color: var(--ink-2); max-width: 640px; }
+.meta { font: 400 0.8rem/1.5 var(--font-data); color: var(--muted); }
+section { display: grid; gap: 20px; }
+.chapter-head { display: grid; gap: 8px; }
+.chapter-head p { color: var(--ink-2); max-width: 680px; }
+a { color: var(--accent); }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+header.intro { display: grid; gap: 14px; }
+
+/* Destaque + KPIs */
+.hero { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 2fr); gap: 24px; align-items: stretch; }
+.hero-figure { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 24px; display: grid; gap: 6px; align-content: center; }
+.hero-figure .value { font: 600 3.4rem/1 var(--font-body); letter-spacing: -0.02em; }
+.hero-figure .label { color: var(--ink-2); }
+.hero-figure .note { font: 400 0.8rem/1.5 var(--font-data); color: var(--muted); margin-top: 6px; }
+.kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; display: grid; gap: 4px; align-content: start; }
+.tile .label { font-size: 0.85rem; color: var(--ink-2); }
+.tile .value { font: 600 1.75rem/1.15 var(--font-body); }
+.tile .sub { font: 400 0.78rem/1.45 var(--font-data); color: var(--muted); }
+.status { display: inline-flex; align-items: center; gap: 6px; font-size: 0.8rem; color: var(--good-ink); font-weight: 500; }
+.status svg { flex: none; }
+
+/* Cartões de gráfico */
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 20px; display: grid; gap: 14px; min-width: 0; }
+.card .caption { font-size: 0.85rem; color: var(--ink-2); }
+.two-up { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px; }
+.chart { width: 100%; overflow-x: auto; }
+.chart svg { display: block; width: 100%; height: auto; overflow: visible; }
+.chart text { font-family: var(--font-data); fill: var(--muted); font-size: 11px; }
+.chart .lbl-strong { fill: var(--ink); font-weight: 500; }
+.chart .lbl-2 { fill: var(--ink-2); }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 0.82rem; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.key-rect { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+.key-line { width: 14px; height: 2px; display: inline-block; }
+.key-dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.mark { cursor: default; transition: opacity 120ms; }
+.mark:hover, .mark:focus { opacity: 0.8; }
+.mark:focus { outline: none; }
+
+/* Barra segmentada alta */
+.segbar { display: flex; gap: 2px; height: 28px; }
+.segbar > div { border-radius: 4px; display: flex; align-items: center; padding-left: 8px; font: 500 0.78rem/1 var(--font-data); color: #fff; min-width: 0; white-space: nowrap; overflow: visible; }
+.stage-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.stage-list div { display: grid; gap: 2px; }
+.stage-list .t { font: 600 1.15rem/1.2 var(--font-body); }
+.stage-list .n { font-size: 0.82rem; color: var(--ink-2); display: flex; align-items: center; gap: 6px; }
+
+/* Antes e depois */
+.versus { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+.versus .side { border: 1px solid var(--line); border-radius: 8px; padding: 14px 16px; display: grid; gap: 6px; }
+.versus .tag { font: 500 0.72rem/1 var(--font-data); text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+.versus .big { font: 600 1.4rem/1.2 var(--font-body); }
+.versus ul { margin: 0; padding-left: 18px; color: var(--ink-2); font-size: 0.9rem; }
+
+/* Lista de medidores */
+.meters { display: grid; gap: 14px; }
+.meter-row { display: grid; grid-template-columns: minmax(0, 170px) minmax(0, 1fr) 128px; gap: 12px; align-items: center; }
+.meter-row .name { font-size: 0.9rem; }
+.meter-row .name small { display: block; color: var(--muted); font: 400 0.75rem/1.4 var(--font-data); }
+.meter-track { height: 10px; border-radius: 5px; background: var(--grid); overflow: hidden; }
+.meter-fill { height: 100%; border-radius: 5px; }
+.meter-row .fig { font: 500 0.95rem/1 var(--font-data); text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Tabelas */
+.table-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.86rem; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--grid); white-space: nowrap; }
+th { font: 500 0.75rem/1.3 var(--font-data); text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; font-family: var(--font-data); }
+details { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+summary { cursor: pointer; font-weight: 500; }
+details[open] summary { margin-bottom: 12px; }
+
+/* Melhorias */
+.improvements { display: grid; gap: 10px; }
+.imp { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 16px; padding: 14px 0; border-top: 1px solid var(--grid); }
+.chip { align-self: start; justify-self: start; font: 500 0.72rem/1 var(--font-data); padding: 5px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap; display: inline-flex; gap: 5px; align-items: center; }
+.chip.done { color: var(--good-ink); border-color: currentColor; }
+.imp h3 { margin-bottom: 4px; }
+.imp p { color: var(--ink-2); font-size: 0.92rem; }
+.imp .ev { font: 400 0.78rem/1.5 var(--font-data); color: var(--muted); margin-top: 6px; }
+
+.notes { display: grid; gap: 8px; color: var(--ink-2); font-size: 0.92rem; }
+.notes li { margin-bottom: 6px; }
+footer { border-top: 1px solid var(--grid); padding-top: 20px; color: var(--muted); font-size: 0.85rem; display: grid; gap: 6px; }
+code { font-family: var(--font-data); font-size: 0.85em; background: var(--grid); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+
+#tip { position: fixed; pointer-events: none; z-index: 20; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 0.8rem; box-shadow: 0 4px 16px rgba(0,0,0,0.12); max-width: 260px; }
+#tip strong { display: block; font: 600 0.95rem/1.3 var(--font-body); }
+#tip .k { display: flex; align-items: center; gap: 6px; color: var(--ink-2); }
+
+@media (max-width: 760px) {
+  .hero, .two-up, .versus { grid-template-columns: minmax(0, 1fr); }
+  .stage-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .meter-row { grid-template-columns: minmax(0, 1fr) 128px; }
+  .meter-row .meter-track { grid-column: 1 / -1; grid-row: 2; }
+  .imp { grid-template-columns: minmax(0, 1fr); gap: 8px; }
+}
+@media (max-width: 420px) { .kpis { grid-template-columns: minmax(0, 1fr); } }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+</head>
+<body>
+<div class="page">
+  <header class="intro">
+    <p class="eyebrow">Boletim IA · AI Factory · Etapa final</p>
+    <h1>Boletim IA em números</h1>
+    <p class="lede">Um pipeline 100% local coleta notícias de IA, escreve um roteiro em português com um LLM e narra o boletim em áudio. Esta página mostra, com medições reais, quanto ele entrega, onde ele trava e o que vale melhorar.</p>
+    <p class="meta" id="meta-linha">Carregando dados…</p>
+  </header>
+
+  <section aria-labelledby="h-valor">
+    <div class="chapter-head">
+      <p class="eyebrow">1 · O problema e o resultado</p>
+      <h2 id="h-valor">De 20 a 35 minutos de curadoria para 2 minutos de escuta</h2>
+      <p>Acompanhar o mercado de IA exigia abrir várias fontes, filtrar e resumir todo dia. O boletim faz isso sozinho e entrega o resumo em áudio.</p>
+    </div>
+    <div class="hero">
+      <div class="hero-figure">
+        <span class="label">Tempo devolvido por mês</span>
+        <span class="value" id="hero-valor">–</span>
+        <span class="note" id="hero-nota"></span>
+      </div>
+      <div class="kpis">
+        <div class="tile">
+          <span class="label">Taxa de sucesso do pipeline</span>
+          <span class="value" id="kpi-sucesso">–</span>
+          <span class="status" id="kpi-sucesso-status"></span>
+        </div>
+        <div class="tile">
+          <span class="label">Latência mediana por boletim</span>
+          <span class="value" id="kpi-latencia">–</span>
+          <span class="sub" id="kpi-latencia-sub"></span>
+        </div>
+        <div class="tile">
+          <span class="label">Payback do investimento</span>
+          <span class="value" id="kpi-payback">–</span>
+          <span class="sub" id="kpi-payback-sub"></span>
+        </div>
+        <div class="tile">
+          <span class="label">Custo de operação</span>
+          <span class="value">≈ R$ 0</span>
+          <span class="sub">sem API paga, sem nuvem; ~0,13 kWh/mês de energia</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-etapas">
+    <div class="chapter-head">
+      <p class="eyebrow">2 · Onde o tempo vai</p>
+      <h2 id="h-etapas">Dois terços de cada boletim são síntese de voz</h2>
+      <p>Medimos cada etapa separadamente. A coleta na internet, que parecia o ponto frágil, é quase instantânea. O gargalo é o Kokoro, o modelo que transforma o roteiro em áudio.</p>
+    </div>
+    <div class="card">
+      <div class="segbar" id="segbar" role="img"></div>
+      <div class="stage-list" id="stage-list"></div>
+      <p class="caption" id="etapas-caption"></p>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-variacao">
+    <div class="chapter-head">
+      <p class="eyebrow">3 · Por que o tempo varia</p>
+      <h2 id="h-variacao">O mesmo trabalho, em velocidades diferentes</h2>
+      <p>Na síntese de voz, a medida usual é o <strong>fator de tempo real (RTF)</strong>: segundos de processamento para cada segundo de áudio. No notebook, o RTF oscilou entre 0,42 e 1,56 sem relação com o tamanho do texto. Para descobrir a causa, os mesmos roteiros foram sintetizados de novo numa máquina estável.</p>
+    </div>
+    <div class="two-up">
+      <div class="card">
+        <h3>RTF de cada execução no notebook</h3>
+        <div class="chart" id="chart-rtf"></div>
+        <p class="caption">Cada ponto é um boletim, na ordem em que foi gerado. Quanto mais alto, mais lento.</p>
+      </div>
+      <div class="card">
+        <h3>Os mesmos 4 roteiros, sintetizados de novo</h3>
+        <div class="legend">
+          <span><i class="key-dot" style="background: var(--audio)"></i>Notebook (histórico)</span>
+          <span><i class="key-dot" style="background: var(--accent)"></i>Máquina estável</span>
+        </div>
+        <div class="chart" id="chart-dumbbell"></div>
+        <p class="caption">Na máquina estável, os 4 levaram o mesmo tempo (RTF 0,67 a 0,68) e nenhum acionou a re-síntese por loop. A variação vem do estado do notebook (temperatura e outros programas), não do código nem do texto.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-carga">
+    <div class="chapter-head">
+      <p class="eyebrow">4 · Quanto o sistema aguenta</p>
+      <h2 id="h-carga">Cada notícia a mais custa cerca de 11 segundos de LLM</h2>
+      <p>No teste de carga, a quantidade de notícias subiu de 4 para 20, com 5 minutos de pausa entre as rodadas para o notebook esfriar. Todas terminaram bem antes do limite de 15 minutos. Na Etapa 2, sem esses ajustes, 60 notícias estouraram o limite.</p>
+    </div>
+    <div class="card">
+      <div class="legend">
+        <span><i class="key-rect" style="background: var(--accent)"></i>Roteiro (LLM)</span>
+        <span><i class="key-rect" style="background: var(--audio)"></i>Áudio (Kokoro)</span>
+        <span><i class="key-rect" style="background: var(--coleta)"></i>Coleta</span>
+        <span><i class="key-line" style="background: var(--critical)"></i>Limite de 15 min</span>
+      </div>
+      <div class="chart" id="chart-carga"></div>
+      <p class="caption" id="carga-caption"></p>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-robustez">
+    <div class="chapter-head">
+      <p class="eyebrow">5 · Robustez</p>
+      <h2 id="h-robustez">Três pedidos ao mesmo tempo deixaram de travar o sistema</h2>
+      <p>Na Etapa 2, três disparos simultâneos disputaram o mesmo LLM e todos estouraram o tempo. A fila de um pedido por vez, implementada nesta etapa, resolve na hora quem chega com o sistema ocupado.</p>
+    </div>
+    <div class="two-up">
+      <div class="card">
+        <h3>3 chamadas simultâneas</h3>
+        <div class="versus" id="versus"></div>
+      </div>
+      <div class="card">
+        <h3>Taxa de sucesso: desenvolvimento x sistema final</h3>
+        <div class="meters" id="meters"></div>
+        <p class="caption">A fase de desenvolvimento inclui erros de configuração e 6 testes de stress feitos de propósito. O sistema final soma todas as execuções medidas de 10 a 12/11; as 2 recusas da fila não contam como falha, porque são o comportamento planejado.</p>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-roi">
+    <div class="chapter-head">
+      <p class="eyebrow">6 · Retorno do investimento</p>
+      <h2 id="h-roi">O projeto se paga em 1 a 2,3 meses de uso</h2>
+      <p>O ganho é medido em horas. A conta considera o tempo de escuta como gasto, embora o áudio possa ser ouvido durante outras tarefas, então os números são conservadores.</p>
+    </div>
+    <div class="card">
+      <div class="table-wrap">
+        <table id="tabela-roi">
+          <thead><tr><th>Cenário</th><th class="num">Curadoria manual</th><th class="num">Investimento</th><th class="num">Horas poupadas/mês</th><th class="num">Payback</th><th class="num">ROI em 12 meses</th><th class="num">ROI com 1 h/mês de manutenção</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p class="caption">ROI = (horas poupadas em 12 meses − horas investidas) ÷ horas investidas. A curadoria manual e as horas de construção são estimativas da autora; por isso a análise usa uma faixa e testa a conclusão com custo de manutenção.</p>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-melhorias">
+    <div class="chapter-head">
+      <p class="eyebrow">7 · O que melhorar</p>
+      <h2 id="h-melhorias">Cada melhoria responde a uma medição</h2>
+    </div>
+    <div class="improvements">
+      <div class="imp">
+        <span class="chip done"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Implementada</span>
+        <div><h3>Fila de um pedido por vez</h3><p>Chamadas que chegam com o pipeline ocupado recebem "ocupado" na hora, em vez de disputar o LLM até o timeout.</p><p class="ev">Evidência: 3 timeouts de 15 min (Etapa 2) → 1 sucesso + 2 recusas instantâneas.</p></div>
+      </div>
+      <div class="imp">
+        <span class="chip done"><svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true"><path d="M2 6.5l2.5 2.5L10 3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>Implementada</span>
+        <div><h3>Medição por etapa e auditoria de falhas</h3><p>Cada pedido grava latência, status e tempo de cada etapa no banco. Foi o que revelou o gargalo real.</p><p class="ev">Tabelas <code>requisicoes</code> (servidor) e <code>execucoes</code> (pipeline).</p></div>
+      </div>
+      <div class="imp">
+        <span class="chip">Proposta</span>
+        <div><h3>Rodar o Kokoro na GPU</h3><p>O áudio é a maior fatia do tempo. Trocar o onnxruntime de CPU pela versão DirectML (GPU no Windows) ataca diretamente o gargalo.</p><p class="ev" id="ev-gpu"></p></div>
+      </div>
+      <div class="imp">
+        <span class="chip">Proposta</span>
+        <div><h3>Registrar CPU, memória e temperatura</h3><p>O experimento provou que a variação vem do ambiente, mas não qual fator. Gravar esses dados por execução (biblioteca psutil) fecha a investigação.</p><p class="ev">Evidência: RTF de 0,42 a 1,56 no notebook contra 0,67 a 0,68 na máquina estável.</p></div>
+      </div>
+      <div class="imp">
+        <span class="chip">Proposta</span>
+        <div><h3>Manter o LLM carregado na memória</h3><p>Depois de 5 minutos parado, o Ollama descarrega o modelo e a próxima chamada paga a partida a frio. O parâmetro <code>keep_alive</code> evita isso.</p><p class="ev" id="ev-frio"></p></div>
+      </div>
+      <div class="imp">
+        <span class="chip">Proposta</span>
+        <div><h3>Gerar o boletim com o notebook ocioso</h3><p>Agendar a execução para a madrugada evita disputa com outros programas e aquecimento, que deixaram o áudio até 3 vezes mais lento.</p></div>
+      </div>
+    </div>
+  </section>
+
+  <section aria-labelledby="h-metodo">
+    <div class="chapter-head">
+      <p class="eyebrow">Método e limites</p>
+      <h2 id="h-metodo">Como estes números foram medidos</h2>
+    </div>
+    <ul class="notes prose">
+      <li>O próprio microsserviço grava cada pedido no banco SQLite do projeto. Os números desta página saem de <code>scripts/metricas.py</code>, que lê esse banco.</li>
+      <li>A amostra padrão tem 13 boletins na carga de produção (10 notícias) gerados num único notebook. É suficiente para mediana e faixa, não para conclusões estatísticas fortes.</li>
+      <li>O histórico da fase de desenvolvimento foi transcrito da aba de execuções do n8n, que não grava esses dados no banco.</li>
+      <li>O tempo de curadoria manual e as horas de construção são estimativas, não medições.</li>
+      <li>A análise ética e de LGPD, incluindo a política de retenção de dados implementada, está no README do repositório.</li>
+    </ul>
+    <details>
+      <summary>Ver todos os pedidos medidos (tabela)</summary>
+      <div class="table-wrap">
+        <table id="tabela-dados">
+          <thead><tr><th class="num">#</th><th>Início</th><th>Status</th><th class="num">Notícias</th><th class="num">Total (s)</th><th class="num">Coleta (s)</th><th class="num">Roteiro (s)</th><th class="num">Áudio (s)</th><th class="num">Duração do áudio (s)</th></tr></thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+
+  <footer>
+    <p>Boletim IA · projeto da disciplina AI Factory (PUCPR) · Emily Cristofoleti</p>
+    <p>Código e documentação: <a href="https://github.com/new-emi/faculdade-automacao-relatorio">github.com/new-emi/faculdade-automacao-relatorio</a></p>
+    <p id="rodape-gerado"></p>
+  </footer>
+</div>
+<div id="tip" hidden></div>
+
+<script src="dados.js"></script>
+<script>
+(function () {
+  const M = window.METRICAS;
+  if (!M) { document.getElementById("meta-linha").textContent = "Não foi possível carregar dados.js. Rode python scripts/metricas.py."; return; }
+  const NS = "http://www.w3.org/2000/svg";
+  const nf = (v, d = 0) => Number(v).toLocaleString("pt-BR", { minimumFractionDigits: d, maximumFractionDigits: d });
+  const min = s => nf(s / 60, 1) + " min";
+  const $ = id => document.getElementById(id);
+  const txt = (el, t) => { el.textContent = t; return el; };
+  const css = name => `var(${name})`;  // cores como tokens: o SVG troca de tema sozinho
+
+  // ---------- tooltip ----------
+  const tip = $("tip");
+  function showTip(evt, titulo, linhas) {
+    tip.replaceChildren();
+    tip.appendChild(txt(document.createElement("strong"), titulo));
+    (linhas || []).forEach(([cor, texto]) => {
+      const row = document.createElement("div"); row.className = "k";
+      if (cor) { const k = document.createElement("i"); k.className = "key-line"; k.style.background = cor; row.appendChild(k); }
+      row.appendChild(document.createTextNode(texto));
+      tip.appendChild(row);
+    });
+    tip.hidden = false;
+    let x, y;
+    if (evt.clientX !== undefined && evt.type !== "focus") { x = evt.clientX; y = evt.clientY; }
+    else { const r = evt.target.getBoundingClientRect(); x = r.left + r.width / 2; y = r.top; }
+    const w = tip.offsetWidth, h = tip.offsetHeight;
+    tip.style.left = Math.min(Math.max(8, x + 12), window.innerWidth - w - 8) + "px";
+    tip.style.top = Math.max(8, y - h - 12) + "px";
+  }
+  const hideTip = () => { tip.hidden = true; };
+  function bindTip(el, titulo, linhas) {
+    el.setAttribute("tabindex", "0");
+    el.setAttribute("aria-label", titulo + ": " + (linhas || []).map(l => l[1]).join(", "));
+    el.classList.add("mark");
+    el.addEventListener("pointermove", e => showTip(e, titulo, linhas));
+    el.addEventListener("pointerleave", hideTip);
+    el.addEventListener("focus", e => showTip(e, titulo, linhas));
+    el.addEventListener("blur", hideTip);
+  }
+  function svg(tag, attrs, parent) {
+    const el = document.createElementNS(NS, tag);
+    for (const k in attrs) {
+      const v = String(attrs[k]);
+      if ((k === "fill" || k === "stroke") && v.startsWith("var(")) el.style[k] = v;  // atributo SVG nao aceita var()
+      else el.setAttribute(k, v);
+    }
+    if (parent) parent.appendChild(el);
+    return el;
+  }
+  function svgText(parent, x, y, t, attrs = {}) { const el = svg("text", Object.assign({ x, y }, attrs), parent); el.textContent = t; return el; }
+  // coluna com topo arredondado (4px) e base reta
+  function colPath(x, y, w, h, r) {
+    r = Math.min(r, h, w / 2);
+    return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`;
+  }
+
+  // ---------- cabeçalho ----------
+  const [ini, fim] = M.periodo;
+  const d = s => s.slice(8, 10) + "/" + s.slice(5, 7);
+  $("meta-linha").textContent = `${M.requisicoes_total} pedidos medidos de ${d(ini)} a ${d(fim)}/${fim.slice(0, 4)} · gerado em ${M.gerado_em}`;
+  $("rodape-gerado").textContent = `Dados gerados por scripts/metricas.py em ${M.gerado_em}.`;
+
+  // ---------- capítulo 1 ----------
+  const R = M.roi;
+  $("hero-valor").textContent = `${nf(R.pessimista.poupado_h_mes, 1)} a ${nf(R.otimista.poupado_h_mes, 1)} h`;
+  $("hero-nota").textContent = `${R.premissas.manual_min_dia[0]} a ${R.premissas.manual_min_dia[1]} min de curadoria manual por dia − ${nf(M.escuta_mediana_min, 1)} min de escuta, em ${R.premissas.dias_mes} dias úteis`;
+  const S = M.sucesso;
+  $("kpi-sucesso").textContent = `${nf(S.pipeline_ok / S.pipeline_total * 100)}%`;
+  const st = $("kpi-sucesso-status");
+  st.innerHTML = '<svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true"><circle cx="7" cy="7" r="7" fill="currentColor"/><path d="M3.8 7.2l2.1 2.1 4.3-4.6" fill="none" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  st.appendChild(document.createTextNode(`${S.pipeline_ok} de ${S.pipeline_total} execuções sem falha`));
+  const L = M.latencia;
+  $("kpi-latencia").textContent = min(L.mediana_s);
+  $("kpi-latencia-sub").textContent = `de ${min(L.min_s)} a ${min(L.max_s)} · ${L.n} boletins com 10 notícias`;
+  $("kpi-payback").textContent = `${nf(R.otimista.payback_meses, 1)} a ${nf(R.pessimista.payback_meses, 1)} meses`;
+  $("kpi-payback-sub").textContent = `${R.premissas.investimento_h[0]} a ${R.premissas.investimento_h[1]} h investidas na construção`;
+
+  // ---------- capítulo 2: barra segmentada ----------
+  const E = M.etapas_mediana_s, P = M.etapas_pct;
+  const etapas = [
+    ["coleta", "Coleta (HN + Reddit)", "var(--coleta)"],
+    ["roteiro", "Roteiro (LLM qwen2.5:3b)", "var(--accent)"],
+    ["audio", "Áudio (Kokoro TTS)", "var(--audio)"],
+    ["registro", "Registro no SQLite", "var(--deemph)"],
+  ];
+  const seg = $("segbar");
+  seg.setAttribute("aria-label", "Divisão do tempo mediano: " + etapas.map(([k, n]) => `${n} ${nf(P[k], 1)}%`).join(", "));
+  etapas.forEach(([k, nome, cor]) => {
+    if (!E[k] || P[k] < 0.05) return;
+    const b = document.createElement("div");
+    b.style.flex = `${P[k]} 1 0`; b.style.background = cor;
+    if (P[k] >= 12) b.textContent = `${nf(P[k])}%`;
+    bindTip(b, nome, [[cor, `${nf(E[k], 1)} s · ${nf(P[k], 1)}% do tempo`]]);
+    seg.appendChild(b);
+  });
+  const sl = $("stage-list");
+  etapas.forEach(([k, nome, cor]) => {
+    const w = document.createElement("div");
+    const t = txt(document.createElement("span"), E[k] < 1 ? `${nf(E[k], 2)} s` : `${nf(E[k], 1)} s`); t.className = "t";
+    const n = document.createElement("span"); n.className = "n";
+    const key = document.createElement("i"); key.className = "key-rect"; key.style.background = cor;
+    n.append(key, document.createTextNode(nome));
+    w.append(t, n); sl.appendChild(w);
+  });
+  $("etapas-caption").textContent = `Mediana de ${L.n} boletins com 10 notícias. A coleta ocupa ${nf(P.coleta, 1)}% do tempo, o roteiro ${nf(P.roteiro, 1)}% e o áudio ${nf(P.audio, 1)}%.`;
+
+  // ---------- capítulo 3a: RTF por execução ----------
+  (function () {
+    const dados = M.tts_variacao;
+    const W = 480, H = 240, m = { t: 16, r: 16, b: 40, l: 38 };
+    const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "RTF por execução, de 0,42 a 1,56" });
+    const yMax = 1.8, x = i => m.l + (i + 0.5) * (W - m.l - m.r) / dados.length, y = v => m.t + (1 - v / yMax) * (H - m.t - m.b);
+    [0, 0.5, 1, 1.5].forEach(v => {
+      svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: css("--grid"), "stroke-width": 1 }, s);
+      svgText(s, m.l - 8, y(v) + 4, nf(v, 1), { "text-anchor": "end" });
+    });
+    // faixa de referência: máquina estável
+    svg("line", { x1: m.l, x2: W - m.r, y1: y(0.675), y2: y(0.675), stroke: css("--accent"), "stroke-width": 2 }, s);
+    svgText(s, W - m.r, y(0.675) - 6, "máquina estável ≈ 0,68", { "text-anchor": "end", class: "lbl-2" });
+    let diaAnterior = "", xUltimoRotulo = -1e9;
+    dados.forEach((p, i) => {
+      const dia = p.inicio.slice(8, 10) + "/" + p.inicio.slice(5, 7);
+      if (dia !== diaAnterior && x(i) - xUltimoRotulo > 44) { svgText(s, x(i), H - m.b + 18, dia, { "text-anchor": "middle" }); xUltimoRotulo = x(i); }
+      diaAnterior = dia;
+      const g = svg("g", {}, s);
+      svg("circle", { cx: x(i), cy: y(p.s_por_s_audio), r: 12, fill: "transparent" }, g);
+      svg("circle", { cx: x(i), cy: y(p.s_por_s_audio), r: 5, fill: css("--audio"), stroke: css("--surface"), "stroke-width": 2 }, g);
+      bindTip(g, `RTF ${nf(p.s_por_s_audio, 2)}`, [[null, `pedido #${p.id} · ${dia} às ${p.inicio.slice(11, 16)}`]]);
+    });
+    svg("line", { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), stroke: css("--axis"), "stroke-width": 1 }, s);
+    svgText(s, m.l, H - 6, "data de cada execução →", { class: "lbl-2" });
+    $("chart-rtf").appendChild(s);
+  })();
+
+  // ---------- capítulo 3b: dumbbell ----------
+  (function () {
+    const dados = M.tts_variacao.filter(p => p.controlado != null);
+    const W = 480, rowH = 44, m = { t: 8, r: 24, b: 44, l: 104 }, H = m.t + m.b + rowH * dados.length;
+    const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Mesmos roteiros: RTF no notebook e na máquina estável" });
+    const xMax = 1.6, x = v => m.l + v / xMax * (W - m.l - m.r);
+    [0, 0.4, 0.8, 1.2, 1.6].forEach(v => {
+      svg("line", { x1: x(v), x2: x(v), y1: m.t, y2: H - m.b, stroke: css("--grid"), "stroke-width": 1 }, s);
+      svgText(s, x(v), H - m.b + 16, nf(v, 1), { "text-anchor": "middle" });
+    });
+    const nomes = { 17: "20 notícias", 16: "16 notícias", 12: "PC descansado", 15: "12 notícias" };
+    dados.forEach((p, i) => {
+      const cy = m.t + rowH * i + rowH / 2;
+      svgText(s, m.l - 10, cy + 4, nomes[p.id] || `pedido #${p.id}`, { "text-anchor": "end", class: "lbl-2" });
+      svg("line", { x1: x(p.controlado), x2: x(p.s_por_s_audio), y1: cy, y2: cy, stroke: css("--deemph"), "stroke-width": 2, "stroke-linecap": "round" }, s);
+      const g = svg("g", {}, s);
+      svg("rect", { x: Math.min(x(p.controlado), x(p.s_por_s_audio)) - 10, y: cy - 14, width: Math.abs(x(p.s_por_s_audio) - x(p.controlado)) + 20, height: 28, fill: "transparent" }, g);
+      svg("circle", { cx: x(p.s_por_s_audio), cy, r: 5, fill: css("--audio"), stroke: css("--surface"), "stroke-width": 2 }, g);
+      svg("circle", { cx: x(p.controlado), cy, r: 5, fill: css("--accent"), stroke: css("--surface"), "stroke-width": 2 }, g);
+      bindTip(g, nomes[p.id] || `pedido #${p.id}`, [[css("--audio"), `notebook: RTF ${nf(p.s_por_s_audio, 2)}`], [css("--accent"), `máquina estável: RTF ${nf(p.controlado, 2)}`]]);
+    });
+    svgText(s, W - m.r, H - 8, "RTF (s de processamento por s de áudio)", { "text-anchor": "end", class: "lbl-2" });
+    $("chart-dumbbell").appendChild(s);
+  })();
+
+  // ---------- capítulo 4: colunas empilhadas ----------
+  (function () {
+    const dados = M.carga;
+    const W = 920, H = 320, m = { t: 20, r: 20, b: 44, l: 52 };
+    const s = svg("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Tempo por etapa conforme a quantidade de notícias" });
+    const yMax = 900, y = v => m.t + (1 - v / yMax) * (H - m.t - m.b);
+    const band = (W - m.l - m.r) / dados.length, bw = 24;
+    [0, 180, 360, 540, 720, 900].forEach(v => {
+      svg("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: css("--grid"), "stroke-width": 1 }, s);
+      svgText(s, m.l - 8, y(v) + 4, v === 0 ? "0" : `${v / 60} min`, { "text-anchor": "end" });
+    });
+    svg("line", { x1: m.l, x2: W - m.r, y1: y(900), y2: y(900), stroke: css("--critical"), "stroke-width": 2 }, s);
+    svgText(s, W - m.r, y(900) + 16, "limite: 15 min", { "text-anchor": "end", class: "lbl-2" });
+    dados.forEach((p, i) => {
+      const cx = m.l + band * i + band / 2, x0 = cx - bw / 2;
+      const partes = [["coleta", p.t_coleta_s, css("--coleta"), "Coleta"], ["roteiro", p.t_roteiro_s, css("--accent"), "Roteiro (LLM)"], ["audio", p.t_audio_s, css("--audio"), "Áudio (Kokoro)"]];
+      let acc = 0;
+      const g = svg("g", {}, s);
+      partes.forEach(([k, v, cor], j) => {
+        const y1 = y(acc + v), y0 = y(acc), h = Math.max(0, y0 - y1 - (j ? 2 : 0));
+        if (j === partes.length - 1) svg("path", { d: colPath(x0, y1, bw, h, 4), fill: cor }, g);
+        else svg("rect", { x: x0, y: y1, width: bw, height: Math.max(h, 0.5), fill: cor }, g);
+        acc += v;
+      });
+      svg("rect", { x: x0 - 8, y: y(acc) - 8, width: bw + 16, height: y(0) - y(acc) + 8, fill: "transparent" }, g);
+      svgText(s, cx, y(acc) - 8, min(p.duracao_s), { "text-anchor": "middle", class: "lbl-strong" });
+      svgText(s, cx, H - m.b + 18, `${p.qtd_noticias} notícias`, { "text-anchor": "middle", class: "lbl-2" });
+      bindTip(g, `${p.qtd_noticias} notícias · ${min(p.duracao_s)}`, partes.map(([, v, cor, n]) => [cor, `${n}: ${nf(v, 0)} s`]).reverse().concat([[null, `RTF do áudio: ${nf(p.s_por_s_audio, 2)}`]]));
+    });
+    svg("line", { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), stroke: css("--axis"), "stroke-width": 1 }, s);
+    $("chart-carga").appendChild(s);
+    const ult = dados[dados.length - 1];
+    $("carga-caption").textContent = `O roteiro cresce de forma quase linear (de ${nf(dados[0].t_roteiro_s)} s para ${nf(ult.t_roteiro_s)} s). Com 20 notícias o total caiu porque o áudio rodou no ritmo rápido (RTF ${nf(ult.s_por_s_audio, 2)}), o mesmo efeito do capítulo 3.`;
+  })();
+
+  // ---------- capítulo 5 ----------
+  (function () {
+    const A = M.stress_antigo, C = M.concorrencia;
+    const ok = C.filter(c => c.status === "sucesso"), rec = C.filter(c => c.status === "ocupado");
+    const v = $("versus");
+    function lado(tag, big, itens) {
+      const el = document.createElement("div"); el.className = "side";
+      el.append(txt(document.createElement("span"), tag), txt(document.createElement("span"), big));
+      el.children[0].className = "tag"; el.children[1].className = "big";
+      const ul = document.createElement("ul");
+      itens.forEach(i => ul.appendChild(txt(document.createElement("li"), i)));
+      el.appendChild(ul); v.appendChild(el);
+    }
+    lado("Antes · Etapa 2", `${A.boletins} boletins`, [`${A.chamadas} timeouts de ${A.timeout_s / 60} min`, `${A.chamadas * A.timeout_s / 60} min de máquina ocupada`, `${A.chamadas} alertas de falha no celular`]);
+    lado("Depois · com fila", `${ok.length} boletim`, [`gerado em ${min(ok[0].duracao_s)}`, `${rec.length} pedidos recusados em menos de 1 s`, "nenhum alerta de falha"]);
+
+    const me = $("meters");
+    const D = S.desenvolvimento;
+    [[`Desenvolvimento`, `n8n · ${D.periodo}`, D.sucesso, D.total, css("--deemph")],
+     [`Sistema final`, `medição · 10 a 12/11/2026`, S.pipeline_ok, S.pipeline_total, css("--good")]].forEach(([nome, sub, a, b, cor]) => {
+      const row = document.createElement("div"); row.className = "meter-row";
+      const n = document.createElement("div"); n.className = "name"; n.textContent = nome;
+      n.appendChild(txt(document.createElement("small"), sub));
+      const tr = document.createElement("div"); tr.className = "meter-track";
+      const f = document.createElement("div"); f.className = "meter-fill"; f.style.width = (a / b * 100) + "%"; f.style.background = cor;
+      tr.appendChild(f);
+      const fig = txt(document.createElement("div"), `${a}/${b} · ${nf(a / b * 100)}%`); fig.className = "fig";
+      row.append(n, tr, fig); me.appendChild(row);
+    });
+  })();
+
+  // ---------- capítulo 6: ROI ----------
+  (function () {
+    const tb = document.querySelector("#tabela-roi tbody"), P = R.premissas;
+    [["Pessimista", P.manual_min_dia[0], P.investimento_h[1], R.pessimista, R.pessimista_com_manutencao],
+     ["Otimista", P.manual_min_dia[1], P.investimento_h[0], R.otimista, R.otimista_com_manutencao]].forEach(([n, man, inv, r, rm]) => {
+      const tr = document.createElement("tr");
+      [n, `${man} min/dia`, `${inv} h`, `${nf(r.poupado_h_mes, 1)} h`, `${nf(r.payback_meses, 1)} meses`, `${nf(r.roi_12m_pct)}%`, `${nf(rm.roi_12m_pct)}%`].forEach((t, i) => {
+        const td = txt(document.createElement("td"), t); if (i) td.className = "num"; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  })();
+
+  // ---------- evidências das melhorias ----------
+  $("ev-gpu").textContent = `Evidência: áudio = ${nf(P.audio, 1)}% do tempo mediano (${nf(E.audio)} s de ${nf(L.mediana_s)} s).`;
+  const frio = M.tabela.find(r => r.id === 12);
+  if (frio) $("ev-frio").textContent = `Evidência: com o notebook parado há mais de 1 h, o roteiro levou ${nf(frio.t_roteiro_s)} s, contra a mediana de ${nf(E.roteiro)} s.`;
+
+  // ---------- tabela de dados ----------
+  (function () {
+    const tb = document.querySelector("#tabela-dados tbody");
+    const rot = { sucesso: "sucesso", ocupado: "recusado (fila)", falha: "falha", timeout: "timeout" };
+    M.tabela.forEach(r => {
+      const tr = document.createElement("tr");
+      const f = v => v == null ? "–" : nf(v, 1);
+      [r.id, r.inicio.slice(0, 16).replace(" ", " · "), rot[r.status] || r.status, r.qtd_noticias ?? "–", f(r.duracao_s), f(r.t_coleta_s), f(r.t_roteiro_s), f(r.t_audio_s), f(r.audio_s)].forEach((t, i) => {
+        const td = txt(document.createElement("td"), String(t)); if (i === 0 || i >= 3) td.className = "num"; tr.appendChild(td);
+      });
+      tb.appendChild(tr);
+    });
+  })();
+
+})();
+</script>
+</body>
+</html>
